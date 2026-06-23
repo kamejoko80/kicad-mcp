@@ -1,0 +1,20 @@
+[project]
+name = "kicad-mcp"
+version = "0.1.0"
+description = "A standard cloud-ready SSE MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=0.4.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "kicad-python>=0.7.0"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
