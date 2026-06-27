@@ -34,15 +34,18 @@ def register(mcp) -> None:
 1. Call `get_project_info`, `get_board_stats`, and `list_project_nets`.
 2. Run `check_pcb_drc` and resolve all violations.
 3. Run `compare_sch_pcb_nets` to catch schematic/layout naming drift.
-4. For each power rail, call `inspect_net_trace` and verify trace width/current capacity.
-5. Review board stats for:
+4. Use `get_component_placement` and `get_component_footprint` for critical ICs/connectors.
+5. Use `get_board_geometry` and `analyze_copper_pours` to review copper, zones, and keepouts.
+6. For each power rail, call `analyze_net_routing` or `inspect_net_trace`.
+7. Review board stats for:
    - Outline completeness and board size
    - Component density front/back
    - Via strategy (micro/blind/buried counts)
    - Minimum track width/clearance vs design rules
-6. Check critical nets (clocks, diff pairs, high-speed buses, reset, power).
-7. Confirm manufacturing readiness: placement, drill, copper, and silkscreen concerns.
-8. Summarize findings as: Critical / Major / Minor / Informational.
+8. Check critical nets (clocks, diff pairs, high-speed buses, reset, power, RF).
+9. Confirm manufacturing readiness with `export_gerbers`, `export_drill_files`,
+   `export_position_file`, and `inspect_manufacturing_exports`.
+10. Summarize findings as: Critical / Major / Minor / Informational.
 """
 
     @mcp.prompt()
@@ -64,7 +67,17 @@ Phase 3 - Layout review:
 - `check_pcb_drc`
 - `compare_sch_pcb_nets`
 - `list_project_nets`
-- `inspect_net_trace` for major power rails
+- `get_component_placement`
+- `get_component_footprint` for critical parts
+- `get_board_geometry`
+- `analyze_copper_pours`
+- `analyze_net_routing` for major power and interface nets
+
+Phase 4 - Manufacturing readiness:
+- `export_gerbers`
+- `export_drill_files`
+- `export_position_file`
+- `inspect_manufacturing_exports`
 
 Deliver a consolidated report with prioritized action items.
 """

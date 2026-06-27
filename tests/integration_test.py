@@ -134,6 +134,42 @@ def build_tests(project_dir: str) -> list[ToolTest]:
             description="inspect GND trace geometry and current estimate",
         ),
         ToolTest(
+            name="get_component_footprint",
+            arguments={"project_dir": project_dir, "ref": "U1"},
+            expect='"pads"',
+            description="export structured footprint geometry for a reference",
+        ),
+        ToolTest(
+            name="get_component_placement",
+            arguments={"project_dir": project_dir},
+            expect='"components"',
+            description="export component placement table",
+        ),
+        ToolTest(
+            name="get_board_geometry",
+            arguments={"project_dir": project_dir, "layers": "F.Cu"},
+            expect='"segments"',
+            description="export filtered board geometry",
+        ),
+        ToolTest(
+            name="analyze_copper_pours",
+            arguments={"project_dir": project_dir},
+            expect='"zones"',
+            description="analyze copper pour zones",
+        ),
+        ToolTest(
+            name="analyze_net_routing",
+            arguments={"project_dir": project_dir, "net_name": "GND"},
+            expect='"routing_status"',
+            description="analyze detailed net routing data",
+        ),
+        ToolTest(
+            name="inspect_manufacturing_exports",
+            arguments={"project_dir": project_dir},
+            expect='"categories"',
+            description="inspect generated manufacturing export folders",
+        ),
+        ToolTest(
             name="check_pcb_drc",
             arguments={"project_dir": project_dir},
             expect="DRC",

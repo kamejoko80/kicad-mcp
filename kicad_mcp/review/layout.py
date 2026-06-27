@@ -7,8 +7,8 @@ Email: phuongminh.dang@gmail.com
 import json
 import logging
 import os
-import re
 
+from kicad_mcp import pcb_model
 from kicad_mcp.cli import read_output_file, run_kicad_cli_with_output
 from kicad_mcp.parsing import classify_nets, extract_pcb_net_names
 from kicad_mcp.project import find_project_files, validate_project_dir
@@ -168,88 +168,58 @@ def register(mcp) -> None:
     def inspect_net_trace(project_dir: str, net_name: str) -> str:
         """
         Inspect a specific PCB net for routed segment length, trace width profile,
-        and a conservative IPC-2152 DC current capacity estimate.
+        copper zone participation, and a conservative IPC-2152 DC current capacity estimate.
         """
         logger.info("Inspecting net trace %s in %s", net_name, project_dir)
         error = validate_project_dir(project_dir)
         if error:
             return error
 
-        paths = find_project_files(project_dir)
-        if not paths.pcb_file:
-            return "Error: No .kicad_pcb layout file discovered in this directory."
+        document, load_error = pcb_model.load_pcb_document(project_dir)
+        if document is None:
+            return load_error
 
-        try:
-            with open(paths.pcb_file, encoding="utf-8") as handle:
-                pcb_content = handle.read()
-        except OSError as exc:
-            return f"Failed to read PCB file: {exc}"
+        if net_name not in document.all_net_names():
+            return f"Net `{net_name}` was not found in `{os.path.basename(document.path)}`."
 
-        known_nets = extract_pcb_net_names(pcb_content)
-        if net_name not in known_nets:
-            return f"Net `{net_name}` was not found in `{os.path.basename(paths.pcb_file)}`."
+        analysis = pcb_model.analyze_net_routing(document, net_name)
+        if "error" in analysis:
+            return analysis["error"]
 
-        escaped_net = re.escape(net_name)
-        segment_pattern = (
-            rf'\(segment\s+\(start\s+([\d\.-]+)\s+([\d\.-]+)\)\s+\(end\s+([\d\.-]+)\s+([\d\.-]+)\)\s+'
-            rf'\(width\s+([\d\.]+)\)\s+\(layer\s+"[^"]+"\)\s+\(net\s+"{escaped_net}"\)'
-        )
-        segments = re.findall(segment_pattern, pcb_content)
+        segments = analysis["segments"]
+        zones = analysis["copper_zones"]
+        connectivity = analysis["connectivity"]
+        ipc = analysis["ipc2152_dc_estimate"]
 
-        if not segments:
-            net_id_match = re.search(rf'\(net\s+(\d+)\s+"{escaped_net}"\)', pcb_content)
-            if net_id_match:
-                net_id = net_id_match.group(1)
-                legacy_pattern = (
-                    rf'\(segment\s+\(start\s+([\d\.-]+)\s+([\d\.-]+)\)\s+\(end\s+([\d\.-]+)\s+([\d\.-]+)\)\s+'
-                    rf'\(width\s+([\d\.]+)\)\s+\(layer\s+"[^"]+"\)\s+\(net\s+{net_id}\)'
-                )
-                segments = re.findall(legacy_pattern, pcb_content)
-
-        if not segments:
-            return f"Net `{net_name}` exists but has no routed copper segments yet."
-
-        total_length_mm = 0.0
-        widths_found = set()
-
-        for start_x, start_y, end_x, end_y, width in segments:
-            x1, y1 = float(start_x), float(start_y)
-            x2, y2 = float(end_x), float(end_y)
-            total_length_mm += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-            widths_found.add(float(width))
-
-        min_width_mm = min(widths_found)
-        max_width_mm = max(widths_found)
-
-        copper_thickness_mils = 1.37
-        trace_width_mils = min_width_mm * 39.3701
-        cross_section_sq_mils = trace_width_mils * copper_thickness_mils
-
-        k = 0.048
-        b = 0.44
-        c = 0.725
-        temp_rise = 10.0
-        max_current_amps = k * (temp_rise**b) * (cross_section_sq_mils**c)
-
-        width_line = (
-            f"- Trace width: {round(min_width_mm, 3)} mm"
-            if min_width_mm == max_width_mm
-            else (
-                f"- Trace width bounds: {round(min_width_mm, 3)} mm (min) to "
-                f"{round(max_width_mm, 3)} mm (max)"
+        if segments["count"] == 0 and zones["count"] == 0:
+            return (
+                f"Net `{net_name}` exists but has no routed copper segments or copper zones yet. "
+                f"Pads on net: {analysis['pads']['count']}."
             )
-        )
+
+        width = segments["width_mm"]
+        width_line = "n/a"
+        if width["min"] is not None:
+            width_line = (
+                f"{width['min']} mm"
+                if width["min"] == width["max"]
+                else f"{width['min']} mm (min) to {width['max']} mm (max)"
+            )
 
         report = [
             f"## Physical Trace Report: `{net_name}`",
-            "- Routing status: routed segments found",
-            f"- Total estimated trace length: {round(total_length_mm, 2)} mm",
-            width_line,
+            f"- Routing status: {analysis['routing_status']}",
+            f"- Routed segments: {segments['count']}",
+            f"- Copper zones: {zones['count']}",
+            f"- Pads on net: {analysis['pads']['count']}",
+            f"- Total estimated trace length: {segments['total_length_mm']} mm",
+            f"- Trace width: {width_line}",
+            f"- Layers used: {', '.join(segments['layers']) if segments['layers'] else 'none'}",
+            f"- Isolated pads (track/via graph): {connectivity['isolated_pad_count']}",
             "",
             "### IPC-2152 Approximate DC Capacity (1 oz external copper)",
-            f"- At 10 C rise: ~{round(max_current_amps, 2)} A",
-            f"- At 20 C rise: ~{round(max_current_amps * (20 / 10) ** b, 2)} A",
+            f"- At 10 C rise: ~{ipc['max_current_amps_10c']} A",
             "",
-            "Note: Approximate only. Does not include pours, vias, inner layers, or neck-downs.",
+            "For full structured routing data, call `analyze_net_routing`.",
         ]
         return "\n".join(report)

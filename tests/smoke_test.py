@@ -4,11 +4,12 @@ Author: Henry Dang
 Email: phuongminh.dang@gmail.com
 """
 
-from kicad_mcp.project import find_project_files
-from kicad_mcp.config import resolve_kicad_cli
-from kicad_mcp.cli import run_kicad_cli_with_output, read_output_file
-from kicad_mcp.parsing import extract_schematic_net_names, extract_pcb_net_names
 import re
+
+from kicad_mcp.cli import read_output_file, run_kicad_cli_with_output
+from kicad_mcp.config import resolve_kicad_cli
+from kicad_mcp.parsing import extract_pcb_net_names, extract_schematic_net_names
+from kicad_mcp.project import find_project_files
 
 proj = r"D:\Workspace\HW\KiCad\Projects\kicad_hw_design\cardinal_bes2800_rev2.0"
 print("CLI:", resolve_kicad_cli())
