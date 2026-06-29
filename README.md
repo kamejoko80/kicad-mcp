@@ -39,6 +39,15 @@ kicad-mcp/
       geometry.py           # footprint, placement, geometry, pours, routing
       manufacturing.py      # Gerber, drill, position, IPC-D-356 exports
       compare.py            # schematic vs PCB net comparison
+    library/
+      search.py             # MCP component search tools
+      credentials.py        # distributor API key / token storage
+      models.py             # normalized component records
+      registry.py           # provider registry (Mouser, DigiKey, ...)
+      providers/
+        base.py             # provider interface
+        mouser.py           # Mouser Search API client
+        digikey.py          # DigiKey placeholder for future OAuth2
   tests/
     test_pcb_model.py       # PCB parser unit tests
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
@@ -121,6 +130,58 @@ Default export layout:
 |------|-------------|
 | `compare_sch_pcb_nets` | Compare schematic vs PCB net names; flag sch-only or pcb-only nets |
 
+### Component library tools
+
+Search distributor catalogs for parts (Mouser implemented; DigiKey extensible).
+
+| Tool | Description |
+|------|-------------|
+| `get_component_provider_status` | Show credential status for Mouser / DigiKey providers |
+| `set_component_provider_credentials` | Set Mouser API key (or future DigiKey OAuth fields); optional persist to disk |
+| `clear_component_provider_credentials` | Clear session or persisted credentials |
+| `search_components_by_keyword` | Keyword search (Mouser Search API) |
+| `search_components_by_part_number` | Part-number / MPN search with optional manufacturer filter |
+
+**Mouser setup**
+
+1. Register a Search API key at [Mouser API Hub](https://api.mouser.com/api/docs/ui/index) (My Account → APIs).
+2. Configure via environment variable or MCP tool:
+
+```powershell
+$env:MOUSER_API_KEY = "your-search-api-key"
+```
+
+Or at runtime:
+
+```
+set_component_provider_credentials(provider="mouser", api_key="...", persist=false)
+```
+
+Credentials can also be saved to `%APPDATA%\kicad-mcp\credentials.json` (Windows) or `~/.config/kicad-mcp/credentials.json` when `persist=true`.
+
+**Example — keyword search**
+
+```
+search_components_by_keyword(
+  keyword: "100nF 0402 X7R capacitor 25V",
+  provider: "mouser",
+  records: 10,
+  search_options: "InStock"
+)
+```
+
+**Example — part number lookup**
+
+```
+search_components_by_part_number(
+  part_number: "STM32F407VGT6",
+  provider: "mouser",
+  match_mode: "Exact"
+)
+```
+
+Returns normalized JSON records: MPN, distributor PN, manufacturer, description, stock, lead time, RoHS, price breaks, datasheet URL.
+
 ### MCP prompts
 
 | Prompt | Description |
@@ -157,6 +218,8 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8500).OwningProcess -Force
 | `KICAD_CLI` | auto-detected | Path to `kicad-cli` |
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
+| `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`) |
+| `KICAD_MCP_CONFIG_DIR` | OS default | Override credential/config directory |
 
 `kicad-cli` is auto-detected on Windows, macOS, and Linux. KiCad 10 name-only nets (e.g. `(net "GND")` on pads) are supported by the PCB parser.
 
