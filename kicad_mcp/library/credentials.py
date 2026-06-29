@@ -20,17 +20,21 @@ from typing import Any
 class ProviderId(str, Enum):
     MOUSER = "mouser"
     DIGIKEY = "digikey"
+    SAMACSYS = "samacsys"
 
 
 PROVIDER_AUTH_TYPES: dict[ProviderId, str] = {
     ProviderId.MOUSER: "api_key",
     ProviderId.DIGIKEY: "oauth2",
+    ProviderId.SAMACSYS: "basic_auth",
 }
 
 MOUSER_API_KEY_ENV_VARS = ("MOUSER_API_KEY", "MOUSER_SEARCH_API_KEY")
 DIGIKEY_CLIENT_ID_ENV = "DIGIKEY_CLIENT_ID"
 DIGIKEY_CLIENT_SECRET_ENV = "DIGIKEY_CLIENT_SECRET"
 DIGIKEY_ACCESS_TOKEN_ENV = "DIGIKEY_ACCESS_TOKEN"
+SAMACSYS_USERNAME_ENV_VARS = ("SAMACSYS_USERNAME", "SAMACSYS_CSE_USERNAME")
+SAMACSYS_PASSWORD_ENV_VARS = ("SAMACSYS_PASSWORD", "SAMACSYS_CSE_PASSWORD")
 
 
 @dataclass
@@ -222,12 +226,94 @@ class CredentialStore:
             elif self.credentials_file.is_file():
                 self.credentials_file.unlink(missing_ok=True)
 
+    def get_samacsys_credentials(self) -> tuple[str, str, str]:
+        session_values = self._session_overrides.get(ProviderId.SAMACSYS.value, {})
+        if session_values.get("username") and session_values.get("password"):
+            return (
+                session_values["username"],
+                session_values["password"],
+                "session",
+            )
+
+        env_username = ""
+        env_password = ""
+        for env_name in SAMACSYS_USERNAME_ENV_VARS:
+            env_username = os.environ.get(env_name, "").strip()
+            if env_username:
+                break
+        for env_name in SAMACSYS_PASSWORD_ENV_VARS:
+            env_password = os.environ.get(env_name, "").strip()
+            if env_password:
+                break
+        if env_username and env_password:
+            return env_username, env_password, "environment"
+
+        file_credentials = self._load_file_credentials()
+        file_values = file_credentials.get(ProviderId.SAMACSYS.value, {})
+        username = file_values.get("username", "").strip()
+        password = file_values.get("password", "").strip()
+        if username and password:
+            return username, password, "file"
+
+        return "", "", "none"
+
+    def set_samacsys_credentials(
+        self,
+        username: str,
+        password: str,
+        persist: bool = False,
+    ) -> None:
+        cleaned_username = username.strip()
+        cleaned_password = password.strip()
+        if not cleaned_username or not cleaned_password:
+            raise ValueError("SamacSys username and password are both required.")
+
+        self._session_overrides[ProviderId.SAMACSYS.value] = {
+            "username": cleaned_username,
+            "password": cleaned_password,
+        }
+        if persist:
+            file_credentials = self._load_file_credentials()
+            bucket = file_credentials.setdefault(ProviderId.SAMACSYS.value, {})
+            bucket["username"] = cleaned_username
+            bucket["password"] = cleaned_password
+            self._save_file_credentials(file_credentials)
+
+    def clear_samacsys_credentials(self, clear_persisted: bool = False) -> None:
+        self._session_overrides.pop(ProviderId.SAMACSYS.value, None)
+        if clear_persisted:
+            file_credentials = self._load_file_credentials()
+            file_credentials.pop(ProviderId.SAMACSYS.value, None)
+            if file_credentials:
+                self._save_file_credentials(file_credentials)
+            elif self.credentials_file.is_file():
+                self.credentials_file.unlink(missing_ok=True)
+
     def get_provider_status(self, provider: ProviderId) -> ProviderCredentialStatus:
         display_names = {
             ProviderId.MOUSER: "Mouser",
             ProviderId.DIGIKEY: "DigiKey",
+            ProviderId.SAMACSYS: "SamacSys Component Search Engine",
         }
         auth_type = PROVIDER_AUTH_TYPES[provider]
+
+        if provider == ProviderId.SAMACSYS:
+            username, _password, source = self.get_samacsys_credentials()
+            configured = bool(username)
+            masked = _mask_secret(username) if username else None
+            return ProviderCredentialStatus(
+                provider=provider.value,
+                display_name=display_names[provider],
+                auth_type=auth_type,
+                configured=configured,
+                source=source,
+                masked_credential=masked,
+                notes=(
+                    "Register a free account at https://componentsearchengine.com/register. "
+                    f"Set {SAMACSYS_USERNAME_ENV_VARS[0]} and {SAMACSYS_PASSWORD_ENV_VARS[0]}, "
+                    "or use set_ecad_provider_credentials(provider='samacsys', ...)."
+                ),
+            )
 
         if provider == ProviderId.MOUSER:
             api_key, source = self.get_mouser_api_key()

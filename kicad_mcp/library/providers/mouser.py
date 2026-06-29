@@ -17,9 +17,10 @@ from kicad_mcp.library.credentials import CredentialStore, ProviderCredentialSta
 from kicad_mcp.library.models import ComponentRecord, PriceBreak, SearchResult
 from kicad_mcp.library.providers.base import ComponentSearchProvider, ProviderNotConfiguredError
 
-MOUSER_API_BASE = "https://api.mouser.com/api/v1"
+MOUSER_API_BASE = "https://api.mouser.com/api/v2"
 KEYWORD_SEARCH_OPTIONS = {"None", "Rohs", "InStock", "RohsAndInStock"}
 PART_SEARCH_OPTIONS = {"Exact", "BeginsWith", "Contains"}
+PART_NUMBER_SEARCH_OPTIONS = {"None", "Exact"}
 MAX_RECORDS = 50
 MAX_PART_NUMBERS = 10
 
@@ -123,7 +124,7 @@ class MouserProvider(ComponentSearchProvider):
             lifecycle_status=str(part.get("LifecycleStatus", "")),
             min_order_qty=str(part.get("Min", "")),
             order_multiple=str(part.get("Mult", "")),
-            rohs_status=str(part.get("RohsStatus", "")),
+            rohs_status=str(part.get("RohsStatus") or part.get("ROHSStatus", "")),
             price_breaks=price_breaks,
         )
 
@@ -185,16 +186,15 @@ class MouserProvider(ComponentSearchProvider):
             )
 
         bounded_records = max(1, min(records, MAX_RECORDS))
-        bounded_start = max(0, starting_record)
-        body = {
-            "SearchByKeywordRequest": {
-                "keyword": cleaned_keyword,
-                "records": bounded_records,
-                "startingRecord": bounded_start,
-                "searchOptions": search_options,
-            }
+        page_number = max(1, (max(0, starting_record) // bounded_records) + 1)
+        request_body: dict[str, Any] = {
+            "keyword": cleaned_keyword,
+            "records": bounded_records,
+            "pageNumber": page_number,
+            "searchOptions": search_options,
         }
-        payload = self._post("search/keyword", body)
+        body = {"SearchByKeywordMfrNameRequest": request_body}
+        payload = self._post("search/keywordandmanufacturer", body)
         return self._build_result(query=cleaned_keyword, search_type="keyword", payload=payload)
 
     def search_by_part_number(
@@ -243,25 +243,34 @@ class MouserProvider(ComponentSearchProvider):
 
         joined_parts = "|".join(part_numbers)
         cleaned_manufacturer = manufacturer.strip()
-        if cleaned_manufacturer:
+        if match_mode == "Exact":
+            part_search_options = "Exact"
+        else:
+            part_search_options = "None"
+
+        if cleaned_manufacturer and match_mode == "Exact":
             endpoint = "search/partnumberandmanufacturer"
             body = {
-                "SearchByPartMfrRequest": {
+                "SearchByPartMfrNameRequest": {
                     "mouserPartNumber": joined_parts,
                     "manufacturerName": cleaned_manufacturer,
-                    "partSearchOptions": match_mode,
+                    "partSearchOptions": part_search_options,
                 }
             }
             query = f"{joined_parts} ({cleaned_manufacturer})"
-        else:
-            endpoint = "search/partnumber"
-            body = {
-                "SearchByPartRequest": {
-                    "mouserPartNumber": joined_parts,
-                    "partSearchOptions": match_mode,
-                }
-            }
-            query = joined_parts
+            payload = self._post(endpoint, body)
+            return self._build_result(query=query, search_type="part_number", payload=payload)
 
-        payload = self._post(endpoint, body)
+        keyword = joined_parts if match_mode == "Exact" else cleaned_part
+        request_body: dict[str, Any] = {
+            "keyword": keyword,
+            "records": MAX_RECORDS,
+            "pageNumber": 1,
+            "searchOptions": "None",
+        }
+        if cleaned_manufacturer:
+            request_body["manufacturerName"] = cleaned_manufacturer
+        body = {"SearchByKeywordMfrNameRequest": request_body}
+        query = f"{keyword} ({cleaned_manufacturer})" if cleaned_manufacturer else keyword
+        payload = self._post("search/keywordandmanufacturer", body)
         return self._build_result(query=query, search_type="part_number", payload=payload)

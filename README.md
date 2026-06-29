@@ -48,6 +48,11 @@ kicad-mcp/
         base.py             # provider interface
         mouser.py           # Mouser Search API client
         digikey.py          # DigiKey placeholder for future OAuth2
+      ecad/
+        models.py           # ECAD part match / download models
+        samacsys.py         # SamacSys Component Search Engine client
+        registry.py         # ECAD provider registry
+      ecad_tools.py         # SamacSys MCP download/search tools
   tests/
     test_pcb_model.py       # PCB parser unit tests
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
@@ -182,6 +187,60 @@ search_components_by_part_number(
 
 Returns normalized JSON records: MPN, distributor PN, manufacturer, description, stock, lead time, RoHS, price breaks, datasheet URL.
 
+### SamacSys ECAD library tools
+
+Download KiCad symbols, footprints, and 3D models from [SamacSys Component Search Engine](https://componentsearchengine.com/) using your free account credentials.
+
+| Tool | Description |
+|------|-------------|
+| `get_ecad_provider_status` | Show SamacSys credential status |
+| `set_ecad_provider_credentials` | Set Component Search Engine username/password; optional persist to disk |
+| `clear_ecad_provider_credentials` | Clear session or persisted SamacSys credentials |
+| `search_ecad_components` | Search CSE for exact MPN matches with downloadable KiCad libraries |
+| `download_ecad_component_library` | Download and optionally extract KiCad library files |
+
+**SamacSys setup**
+
+1. Register at [componentsearchengine.com/register](https://componentsearchengine.com/register).
+2. Configure credentials:
+
+```powershell
+$env:SAMACSYS_USERNAME = "your@cse.account"
+$env:SAMACSYS_PASSWORD = "your-password"
+```
+
+Or at runtime:
+
+```
+set_ecad_provider_credentials(
+  provider="samacsys",
+  username="your@cse.account",
+  password="your-password",
+  persist=false
+)
+```
+
+**Example — search then download**
+
+```
+search_ecad_components(query="0201WMF220JTEE", manufacturer="Royalohm")
+download_ecad_component_library(
+  part_number="0201WMF220JTEE",
+  manufacturer="Royalohm",
+  output_dir="D:/Workspace/HW/libs/samacsys",
+  extract=true
+)
+```
+
+Downloads default to `%APPDATA%\\kicad-mcp\\samacsys-downloads` when `output_dir` is omitted. Extracted layout:
+
+```
+<output_dir>/<library_name>/
+  <library_name>.kicad_sym
+  <library_name>.pretty/*.kicad_mod
+  <library_name>.3dshapes/*.{stp,wrl}
+```
+
 ### MCP prompts
 
 | Prompt | Description |
@@ -219,6 +278,9 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8500).OwningProcess -Force
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
 | `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`) |
+| `SAMACSYS_USERNAME` | — | Component Search Engine login (alias: `SAMACSYS_CSE_USERNAME`) |
+| `SAMACSYS_PASSWORD` | — | Component Search Engine password (alias: `SAMACSYS_CSE_PASSWORD`) |
+| `KICAD_MCP_SAMACSYS_DOWNLOAD_DIR` | OS default | Override SamacSys download output directory |
 | `KICAD_MCP_CONFIG_DIR` | OS default | Override credential/config directory |
 
 `kicad-cli` is auto-detected on Windows, macOS, and Linux. KiCad 10 name-only nets (e.g. `(net "GND")` on pads) are supported by the PCB parser.

@@ -12,6 +12,7 @@ from fastmcp import FastMCP
 from kicad_mcp import __version__
 from kicad_mcp.config import resolve_kicad_cli
 from kicad_mcp.project import find_project_files, summarize_project_info, validate_project_dir
+from kicad_mcp.library.ecad_tools import register as register_ecad_tools
 from kicad_mcp.library.search import register as register_library_tools
 from kicad_mcp.prompts import register as register_prompts
 from kicad_mcp.review.compare import register as register_compare_tools
@@ -30,7 +31,9 @@ mcp = FastMCP(
         "then run ERC/DRC checks, geometry/footprint tools, and net analysis tools. "
         "For BOM/part lookup, configure Mouser credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
-        "or search_components_by_part_number."
+        "or search_components_by_part_number. For KiCad symbols/footprints, configure "
+        "SamacSys credentials with set_ecad_provider_credentials, then use "
+        "search_ecad_components and download_ecad_component_library."
     ),
 )
 
@@ -40,6 +43,7 @@ register_geometry_tools(mcp)
 register_manufacturing_tools(mcp)
 register_compare_tools(mcp)
 register_library_tools(mcp)
+register_ecad_tools(mcp)
 register_prompts(mcp)
 
 

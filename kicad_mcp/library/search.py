@@ -10,6 +10,7 @@ import json
 import logging
 
 from kicad_mcp.library.credentials import get_credential_store
+from kicad_mcp.library.ecad.registry import list_ecad_provider_ids
 from kicad_mcp.library.providers.base import ProviderNotConfiguredError, ProviderNotImplementedError
 from kicad_mcp.library.registry import get_provider, list_provider_ids, resolve_provider_id
 
@@ -43,6 +44,7 @@ def register(mcp) -> None:
                 "config_dir": str(store.config_dir),
                 "credentials_file": str(store.credentials_file),
                 "supported_providers": list_provider_ids(),
+                "supported_ecad_providers": list_ecad_provider_ids(),
                 "providers": statuses,
             }
         )
