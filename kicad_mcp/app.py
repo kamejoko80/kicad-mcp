@@ -29,10 +29,11 @@ mcp = FastMCP(
     instructions=(
         "KiCad schematic and PCB layout review server. Start with get_project_info, "
         "then run ERC/DRC checks, geometry/footprint tools, and net analysis tools. "
-        "For BOM/part lookup, configure Mouser credentials with "
+        "For BOM/part lookup, configure Mouser or DigiKey credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
-        "or search_components_by_part_number. For KiCad symbols/footprints, configure "
-        "SamacSys credentials with set_ecad_provider_credentials, then use "
+        "or search_components_by_part_number (provider='mouser' or 'digikey'). "
+        "For KiCad symbols/footprints, configure SamacSys credentials with "
+        "set_ecad_provider_credentials, then use "
         "search_ecad_components and download_ecad_component_library."
     ),
 )

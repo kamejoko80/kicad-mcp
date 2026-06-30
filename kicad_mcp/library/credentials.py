@@ -1,7 +1,7 @@
 """Credential storage for distributor component search APIs.
 
 Supports environment variables, optional on-disk config, and in-session overrides.
-Mouser uses API-key auth today; DigiKey OAuth fields are reserved for future use.
+Mouser uses API-key auth; DigiKey uses OAuth2 client credentials.
 
 Author: Henry Dang
 Email: phuongminh.dang@gmail.com
@@ -351,7 +351,13 @@ class CredentialStore:
             configured=configured,
             source=source,
             masked_credential=masked,
-            notes="DigiKey provider is reserved for future OAuth2 integration.",
+            notes=(
+                "Register a Production or Sandbox app at https://developer.digikey.com/ "
+                f"and subscribe to Product Information V4. Set {DIGIKEY_CLIENT_ID_ENV} and "
+                f"{DIGIKEY_CLIENT_SECRET_ENV}, or use "
+                "set_component_provider_credentials(provider='digikey', ...). "
+                "Set DIGIKEY_SANDBOX=true to use the sandbox API host."
+            ),
         )
 
     def list_provider_statuses(self) -> list[ProviderCredentialStatus]:

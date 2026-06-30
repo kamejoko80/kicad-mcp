@@ -61,9 +61,9 @@ def register(mcp) -> None:
         """
         Configure distributor credentials for component search.
 
-        Mouser uses a Search API key (api_key). DigiKey OAuth fields are accepted
-        for future use (client_id, client_secret, access_token). Set persist=true
-        to write credentials to the local kicad-mcp config directory.
+        Mouser uses a Search API key (api_key). DigiKey uses OAuth2 client_id and
+        client_secret (Product Information V4). Set persist=true to write credentials
+        to the local kicad-mcp config directory.
         """
         store = get_credential_store()
         try:
@@ -141,9 +141,9 @@ def register(mcp) -> None:
         """
         Search distributor catalogs by keyword.
 
-        provider: mouser (default) or digikey (future).
-        search_options (Mouser): None, Rohs, InStock, RohsAndInStock.
-        records: max 50 per Mouser API call.
+        provider: mouser (default) or digikey.
+        search_options (Mouser/DigiKey): None, Rohs, InStock, RohsAndInStock.
+        records: max 50 per API call.
         """
         logger.info("Keyword component search via %s: %s", provider, keyword)
         try:
@@ -174,9 +174,10 @@ def register(mcp) -> None:
         """
         Search distributor catalogs by part number.
 
-        Accepts Mouser part numbers or manufacturer part numbers (MPN).
-        Separate up to 10 part numbers with '|'. Optional manufacturer narrows
-        Mouser part+manufacturer search. match_mode: Exact, BeginsWith, Contains.
+        Accepts distributor or manufacturer part numbers (MPN).
+        Separate up to 10 part numbers with '|'. Optional manufacturer narrows results.
+        match_mode: Exact, BeginsWith, Contains.
+        provider: mouser (default) or digikey.
         """
         logger.info("Part-number component search via %s: %s", provider, part_number)
         try:

@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from kicad_mcp.library.credentials import CredentialStore, ProviderId
 from kicad_mcp.library.providers.base import ProviderNotConfiguredError
+from kicad_mcp.library.providers.digikey import DigiKeyProvider
 from kicad_mcp.library.providers.mouser import MouserProvider
 from kicad_mcp.library.registry import get_provider, resolve_provider_id
 
@@ -50,6 +51,31 @@ class CredentialStoreTests(unittest.TestCase):
         status = self.store.get_provider_status(ProviderId.MOUSER)
         self.assertTrue(status.configured)
         self.assertEqual(status.masked_credential, "abcd...9876")
+
+    def test_digikey_credentials_from_environment(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "DIGIKEY_CLIENT_ID": "client-id-12345678",
+                "DIGIKEY_CLIENT_SECRET": "client-secret-abcdefgh",
+            },
+            clear=False,
+        ):
+            values, source = self.store.get_digikey_credentials()
+        self.assertEqual(values["client_id"], "client-id-12345678")
+        self.assertEqual(values["client_secret"], "client-secret-abcdefgh")
+        self.assertEqual(source, "environment")
+
+    def test_digikey_provider_status_notes(self) -> None:
+        self.store.set_digikey_credentials(
+            client_id="client-id-12345678",
+            client_secret="client-secret-abcdefgh",
+        )
+        status = self.store.get_provider_status(ProviderId.DIGIKEY)
+        self.assertTrue(status.configured)
+        self.assertEqual(status.auth_type, "oauth2")
+        self.assertEqual(status.masked_credential, "clie...5678")
+        self.assertIn("Product Information V4", status.notes)
 
 
 class MouserProviderTests(unittest.TestCase):
@@ -108,6 +134,143 @@ class MouserProviderTests(unittest.TestCase):
         provider = MouserProvider(empty_store)
         with self.assertRaises(ProviderNotConfiguredError):
             provider.search_by_part_number("NE555P")
+
+
+class DigiKeyProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.store = CredentialStore(config_dir=Path(self.temp_dir.name))
+        self.store.set_digikey_credentials(
+            client_id="fake-client-id",
+            client_secret="fake-client-secret",
+        )
+        self.provider = DigiKeyProvider(self.store)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_search_by_keyword_normalizes_response(self) -> None:
+        payload = {
+            "ProductsCount": 1,
+            "Products": [
+                {
+                    "DigiKeyProductNumber": "296-6501-1-ND",
+                    "ManufacturerProductNumber": "CRCW080510K0FKEA",
+                    "ManufacturerName": "Vishay Dale",
+                    "ProductDescription": "RES SMD 10K OHM 1% 1/8W 0805",
+                    "DetailedDescription": "Thick Film Resistors",
+                    "QuantityAvailable": 10000,
+                    "StockNote": "In Stock",
+                    "ManufacturerLeadWeeks": "10 Weeks",
+                    "ProductStatus": "Active",
+                    "MinimumOrderQuantity": 1,
+                    "RohsStatus": "RoHS Compliant",
+                    "PrimaryDatasheetUrl": "https://example.com/ds.pdf",
+                    "ProductUrl": "https://www.digikey.com/example",
+                    "PrimaryPhotoUrl": "https://example.com/photo.jpg",
+                    "Category": {"Name": "Resistors"},
+                    "PackageType": {"Name": "0805"},
+                    "StandardPricing": [
+                        {"BreakQuantity": 1, "UnitPrice": 0.1},
+                        {"BreakQuantity": 100, "UnitPrice": 0.05},
+                    ],
+                }
+            ],
+        }
+
+        with patch.object(DigiKeyProvider, "_request", return_value=payload):
+            with patch.object(DigiKeyProvider, "_enrich_products_with_pricing", side_effect=lambda products: products):
+                result = self.provider.search_by_keyword("CRCW080510K0FKEA", records=5)
+
+        self.assertEqual(result.total_results, 1)
+        self.assertEqual(len(result.records), 1)
+        record = result.records[0]
+        self.assertEqual(record.provider, "digikey")
+        self.assertEqual(record.distributor_part_number, "296-6501-1-ND")
+        self.assertEqual(record.manufacturer_part_number, "CRCW080510K0FKEA")
+        self.assertEqual(record.price_breaks[0].price, "$0.1")
+
+    def test_search_by_part_number_filters_exact_mpn(self) -> None:
+        payload = {
+            "ProductsCount": 2,
+            "Products": [
+                {
+                    "DigiKeyProductNumber": "111-AAA-ND",
+                    "ManufacturerProductNumber": "NE555P",
+                    "ManufacturerName": "Texas Instruments",
+                    "ProductDescription": "Timer IC",
+                    "StandardPricing": [{"BreakQuantity": 1, "UnitPrice": 0.5}],
+                },
+                {
+                    "DigiKeyProductNumber": "222-BBB-ND",
+                    "ManufacturerProductNumber": "NE555P-TI",
+                    "ManufacturerName": "Texas Instruments",
+                    "ProductDescription": "Other timer",
+                    "StandardPricing": [{"BreakQuantity": 1, "UnitPrice": 0.6}],
+                },
+            ],
+        }
+
+        with patch.object(DigiKeyProvider, "_request", return_value=payload):
+            with patch.object(DigiKeyProvider, "_enrich_products_with_pricing", side_effect=lambda products: products):
+                result = self.provider.search_by_part_number("NE555P", match_mode="Exact")
+
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].manufacturer_part_number, "NE555P")
+
+    def test_fetch_access_token_caches_until_expiry(self) -> None:
+        token_payload = {"access_token": "token-abc", "expires_in": 3600}
+
+        def fake_urlopen(request, timeout=30):
+            self.assertIn("/v1/oauth2/token", request.full_url)
+            class FakeResponse:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def read(self):
+                    import json as json_module
+
+                    return json_module.dumps(token_payload).encode("utf-8")
+
+            return FakeResponse()
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            token_one = self.provider._fetch_access_token("fake-client-id", "fake-client-secret")
+            token_two = self.provider._get_access_token()[1]
+
+        self.assertEqual(token_one, "token-abc")
+        self.assertEqual(token_two, "token-abc")
+
+    def test_search_by_part_number_requires_credentials(self) -> None:
+        empty_store = CredentialStore(config_dir=Path(self.temp_dir.name))
+        provider = DigiKeyProvider(empty_store)
+        result = provider.search_by_part_number("NE555P")
+        self.assertEqual(result.total_results, 0)
+        self.assertTrue(result.errors)
+        self.assertIn("not configured", result.errors[0].lower())
+
+    def test_enrich_products_with_pricing_merges_details(self) -> None:
+        base_product = {
+            "ManufacturerProductNumber": "STM32F401CCU6",
+            "QuantityAvailable": 680,
+        }
+        details = {
+            "DigiKeyProductNumber": "497-STM32F401CCU6-ND",
+            "ManufacturerName": "STMicroelectronics",
+            "StandardPricing": [{"BreakQuantity": 1, "UnitPrice": 4.25}],
+        }
+
+        with patch.object(DigiKeyProvider, "_fetch_product_details", return_value=details):
+            enriched = self.provider._enrich_products_with_pricing([base_product])
+
+        self.assertEqual(len(enriched), 1)
+        record = self.provider._normalize_product(enriched[0])
+        self.assertEqual(record.distributor_part_number, "497-STM32F401CCU6-ND")
+        self.assertEqual(record.manufacturer, "STMicroelectronics")
+        self.assertEqual(record.price_breaks[0].price, "$4.25")
 
 
 class RegistryTests(unittest.TestCase):

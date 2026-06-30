@@ -47,7 +47,7 @@ kicad-mcp/
       providers/
         base.py             # provider interface
         mouser.py           # Mouser Search API client
-        digikey.py          # DigiKey placeholder for future OAuth2
+        digikey.py          # DigiKey Product Information V4 (OAuth2)
       ecad/
         models.py           # ECAD part match / download models
         samacsys.py         # SamacSys Component Search Engine client
@@ -137,14 +137,14 @@ Default export layout:
 
 ### Component library tools
 
-Search distributor catalogs for parts (Mouser implemented; DigiKey extensible).
+Search distributor catalogs for parts (Mouser and DigiKey).
 
 | Tool | Description |
 |------|-------------|
 | `get_component_provider_status` | Show credential status for Mouser / DigiKey providers |
-| `set_component_provider_credentials` | Set Mouser API key (or future DigiKey OAuth fields); optional persist to disk |
+| `set_component_provider_credentials` | Set Mouser API key or DigiKey OAuth client credentials; optional persist to disk |
 | `clear_component_provider_credentials` | Clear session or persisted credentials |
-| `search_components_by_keyword` | Keyword search (Mouser Search API) |
+| `search_components_by_keyword` | Keyword search (Mouser or DigiKey) |
 | `search_components_by_part_number` | Part-number / MPN search with optional manufacturer filter |
 
 **Mouser setup**
@@ -181,6 +181,40 @@ search_components_by_keyword(
 search_components_by_part_number(
   part_number: "STM32F407VGT6",
   provider: "mouser",
+  match_mode: "Exact"
+)
+```
+
+**DigiKey setup**
+
+1. Create a Production or Sandbox application at [developer.digikey.com](https://developer.digikey.com/) and subscribe to **Product Information V4**.
+2. Configure OAuth2 client credentials:
+
+```powershell
+$env:DIGIKEY_CLIENT_ID = "your-client-id"
+$env:DIGIKEY_CLIENT_SECRET = "your-client-secret"
+# Optional: use sandbox host while testing
+$env:DIGIKEY_SANDBOX = "true"
+```
+
+Or at runtime:
+
+```
+set_component_provider_credentials(
+  provider="digikey",
+  client_id="your-client-id",
+  client_secret="your-client-secret",
+  persist=false
+)
+```
+
+**Example — DigiKey part lookup**
+
+```
+search_components_by_part_number(
+  part_number: "MIMX9352CVVXMAB",
+  provider: "digikey",
+  manufacturer: "NXP",
   match_mode: "Exact"
 )
 ```
@@ -278,6 +312,13 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8500).OwningProcess -Force
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
 | `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`) |
+| `DIGIKEY_CLIENT_ID` | — | DigiKey OAuth2 client ID |
+| `DIGIKEY_CLIENT_SECRET` | — | DigiKey OAuth2 client secret |
+| `DIGIKEY_ACCESS_TOKEN` | — | Optional pre-issued DigiKey bearer token |
+| `DIGIKEY_SANDBOX` | `false` | Use `sandbox-api.digikey.com` when `true` |
+| `DIGIKEY_LOCALE_SITE` | `US` | DigiKey locale site header |
+| `DIGIKEY_LOCALE_LANGUAGE` | `en` | DigiKey locale language header |
+| `DIGIKEY_LOCALE_CURRENCY` | `USD` | DigiKey locale currency header |
 | `SAMACSYS_USERNAME` | — | Component Search Engine login (alias: `SAMACSYS_CSE_USERNAME`) |
 | `SAMACSYS_PASSWORD` | — | Component Search Engine password (alias: `SAMACSYS_CSE_PASSWORD`) |
 | `KICAD_MCP_SAMACSYS_DOWNLOAD_DIR` | OS default | Override SamacSys download output directory |
