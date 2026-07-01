@@ -44,6 +44,9 @@ def find_project_files(project_dir: str) -> ProjectPaths:
         pcb_file = metadata.get("pcb_file")
 
     if not root_schematic:
+        root_schematic = _find_root_schematic(project_dir, project_name)
+
+    if not root_schematic and project_name != folder_name:
         root_schematic = _find_root_schematic(project_dir, folder_name)
 
     if not schematic_sheets:

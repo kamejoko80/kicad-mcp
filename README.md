@@ -75,6 +75,21 @@ kicad-mcp/
 | `get_clean_component_list` | Export BOM (reference, value, footprint) |
 | `get_electrical_netlist` | Schematic connectivity netlist (S-expression) |
 | `check_schematic_erc` | Run Electrical Rules Check (ERC) |
+| `list_schematic_pdf_pages` | List PDF page numbers and sheet names (`page_name` / `--pages` targets) |
+| `export_schematic_pdf` | Export schematic PDF via `kicad-cli sch export pdf` |
+
+**Example — export one schematic sheet to PDF:**
+
+```
+list_schematic_pdf_pages(project_dir="D:/path/to/project")
+export_schematic_pdf(
+  project_dir="D:/path/to/project",
+  page_name="mcu",
+  output_path="D:/path/to/project/mcp_exports/pdf/mcu.pdf"
+)
+```
+
+Omit `page_name` and `pages` to export all sheets. Use `schematic_path` to override the root schematic file.
 
 ### Layout tools
 
@@ -427,7 +442,7 @@ Restart the MCP server after upgrading so new tools are registered.
 
 ## Suggested review workflow
 
-1. **Discovery** — `get_project_info`, `scan_project_structure`
+1. **Discovery** — `get_project_info`, `scan_project_structure`, `list_schematic_pdf_pages`
 2. **Schematic** — `check_schematic_erc`, `get_clean_component_list`, `get_electrical_netlist`
 3. **Layout checks** — `check_pcb_drc`, `get_board_stats`, `compare_sch_pcb_nets`, `list_project_nets`
 4. **Geometry** — `get_component_footprint` (critical ICs), `get_component_placement`, `get_board_geometry`, `analyze_copper_pours`

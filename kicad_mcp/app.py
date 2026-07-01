@@ -20,6 +20,7 @@ from kicad_mcp.review.geometry import register as register_geometry_tools
 from kicad_mcp.review.layout import register as register_layout_tools
 from kicad_mcp.review.manufacturing import register as register_manufacturing_tools
 from kicad_mcp.review.schematic import register as register_schematic_tools
+from kicad_mcp.review.schematic_pdf import register as register_schematic_pdf_tools
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("kicad-hardware-agent")
@@ -29,6 +30,7 @@ mcp = FastMCP(
     instructions=(
         "KiCad schematic and PCB layout review server. Start with get_project_info, "
         "then run ERC/DRC checks, geometry/footprint tools, and net analysis tools. "
+        "Use list_schematic_pdf_pages and export_schematic_pdf for schematic PDF output. "
         "For BOM/part lookup, configure Mouser or DigiKey credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
         "or search_components_by_part_number (provider='mouser' or 'digikey'). "
@@ -39,6 +41,7 @@ mcp = FastMCP(
 )
 
 register_schematic_tools(mcp)
+register_schematic_pdf_tools(mcp)
 register_layout_tools(mcp)
 register_geometry_tools(mcp)
 register_manufacturing_tools(mcp)
