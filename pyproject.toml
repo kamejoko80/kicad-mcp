@@ -13,6 +13,11 @@ dependencies = [
 [project.scripts]
 kicad-mcp = "kicad_mcp.app:main"
 
+[project.optional-dependencies]
+playwright = [
+    "playwright>=1.61.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["kicad_mcp"]
 

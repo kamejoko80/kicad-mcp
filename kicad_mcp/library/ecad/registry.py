@@ -7,18 +7,23 @@ Email: phuongminh.dang@gmail.com
 from __future__ import annotations
 
 from enum import Enum
-from typing import Type
+from typing import Type, Union
 
 from kicad_mcp.library.credentials import CredentialStore, get_credential_store
 from kicad_mcp.library.ecad.samacsys import SamacSysClient
+from kicad_mcp.library.ecad.ultralibrarian import UltraLibrarianClient
+
+EcadClient = Union[SamacSysClient, UltraLibrarianClient]
 
 
 class EcadProviderId(str, Enum):
     SAMACSYS = "samacsys"
+    ULTRALIBRARIAN = "ultralibrarian"
 
 
-_ECADA_CLIENT_TYPES: dict[EcadProviderId, Type[SamacSysClient]] = {
+_ECADA_CLIENT_TYPES: dict[EcadProviderId, Type[EcadClient]] = {
     EcadProviderId.SAMACSYS: SamacSysClient,
+    EcadProviderId.ULTRALIBRARIAN: UltraLibrarianClient,
 }
 
 
@@ -38,7 +43,7 @@ def resolve_ecad_provider_id(name: str) -> EcadProviderId:
 def get_ecad_client(
     name: str,
     credential_store: CredentialStore | None = None,
-) -> SamacSysClient:
+) -> EcadClient:
     provider_id = resolve_ecad_provider_id(name)
     store = credential_store or get_credential_store()
     client_type = _ECADA_CLIENT_TYPES[provider_id]

@@ -51,6 +51,7 @@ kicad-mcp/
       ecad/
         models.py           # ECAD part match / download models
         samacsys.py         # SamacSys Component Search Engine client
+        ultralibrarian.py   # Ultra Librarian web export client
         registry.py         # ECAD provider registry
       ecad_tools.py         # SamacSys MCP download/search tools
   tests/
@@ -221,17 +222,23 @@ search_components_by_part_number(
 
 Returns normalized JSON records: MPN, distributor PN, manufacturer, description, stock, lead time, RoHS, price breaks, datasheet URL.
 
-### SamacSys ECAD library tools
+### ECAD library tools
 
-Download KiCad symbols, footprints, and 3D models from [SamacSys Component Search Engine](https://componentsearchengine.com/) using your free account credentials.
+Download KiCad symbols, footprints, and 3D models from ECAD providers using your free account credentials.
+
+Supported providers:
+
+- `samacsys` — [SamacSys Component Search Engine](https://componentsearchengine.com/)
+- `ultralibrarian` — [Ultra Librarian](https://www.ultralibrarian.com/)
 
 | Tool | Description |
 |------|-------------|
-| `get_ecad_provider_status` | Show SamacSys credential status |
-| `set_ecad_provider_credentials` | Set Component Search Engine username/password; optional persist to disk |
-| `clear_ecad_provider_credentials` | Clear session or persisted SamacSys credentials |
-| `search_ecad_components` | Search CSE for exact MPN matches with downloadable KiCad libraries |
+| `get_ecad_provider_status` | Show SamacSys / Ultra Librarian credential status |
+| `set_ecad_provider_credentials` | Set provider username/password; optional persist to disk |
+| `clear_ecad_provider_credentials` | Clear session or persisted provider credentials |
+| `search_ecad_components` | Search for exact MPN matches with downloadable KiCad libraries |
 | `download_ecad_component_library` | Download and optionally extract KiCad library files |
+| `debug_ultralibrarian_session` | Diagnose Ultra Librarian SSO connectivity and session cookies |
 
 **SamacSys setup**
 
@@ -266,7 +273,66 @@ download_ecad_component_library(
 )
 ```
 
-Downloads default to `%APPDATA%\\kicad-mcp\\samacsys-downloads` when `output_dir` is omitted. Extracted layout:
+**Ultra Librarian setup**
+
+1. Register at [ultralibrarian.com](https://www.ultralibrarian.com/).
+2. Install Playwright and the Chromium browser (required for login + download):
+
+```powershell
+uv sync --extra playwright
+uv run playwright install chromium
+```
+
+3. Configure credentials:
+
+```powershell
+$env:ULTRALIBRARIAN_USERNAME = "your@ul.account"
+$env:ULTRALIBRARIAN_PASSWORD = "your-password"
+# Downloads can take 60–120s; increase if MCP calls time out:
+$env:KICAD_MCP_ULTRALIBRARIAN_PLAYWRIGHT_TIMEOUT = "300"
+```
+
+Or at runtime (optionally `persist=true` to save under `%APPDATA%\kicad-mcp\credentials.json`):
+
+```
+set_ecad_provider_credentials(
+  provider="ultralibrarian",
+  username="your@ul.account",
+  password="your-password",
+  persist=false
+)
+```
+
+Ultra Librarian uses a **two-step Playwright flow** (matching the Ultra Librarian web UI):
+
+1. **SSO login** from the home page (`#Email` / `#Password`), saving browser session state.
+2. **Authenticated download** — search → part details → *Download Now* → expand KiCAD accordion → select **KiCad v6+** → set export options → click `a#submit-export`.
+
+Ultra Librarian **search** uses anonymous HTTP. **Download and login** use headless Chromium via Playwright.
+
+**Example — search then download**
+
+```
+search_ecad_components(
+  query="STM32F479NIH6",
+  manufacturer="STMicroelectronics",
+  provider="ultralibrarian"
+)
+download_ecad_component_library(
+  part_number="STM32F479NIH6",
+  manufacturer="STMicroelectronics",
+  provider="ultralibrarian",
+  part_view_url="https://app.ultralibrarian.com/details/...",
+  extract=true,
+  overwrite=true
+)
+```
+
+SamacSys downloads default to `%APPDATA%\\kicad-mcp\\samacsys-downloads`.
+Ultra Librarian downloads default to `%APPDATA%\\kicad-mcp\\ultralibrarian-downloads`.
+Ultra Librarian exports are **KiCad v6+ only**, preferring **Functional** symbol ordering (falls back to **Sequential** when needed) and **Metric (mm)** footprint units.
+
+When `output_dir` is omitted, extracted layout is:
 
 ```
 <output_dir>/<library_name>/
@@ -287,15 +353,25 @@ Downloads default to `%APPDATA%\\kicad-mcp\\samacsys-downloads` when `output_dir
 
 Requires **Python 3.10+** and **KiCad 9 or 10** with `kicad-cli` on PATH (or set `KICAD_CLI`).
 
+**Core server** (schematic/PCB review + SamacSys ECAD search/download):
+
 ```powershell
 uv sync
 uv run kicad-mcp
 ```
 
-Alternative:
+**Full server** (includes Ultra Librarian Playwright login/download):
 
 ```powershell
-uv run python -m kicad_mcp
+uv sync --extra playwright
+uv run playwright install chromium
+uv run --extra playwright kicad-mcp
+```
+
+Alternative entry point:
+
+```powershell
+uv run --extra playwright python -m kicad_mcp
 ```
 
 Stop the server (Windows PowerShell):
@@ -303,6 +379,8 @@ Stop the server (Windows PowerShell):
 ```powershell
 Stop-Process -Id (Get-NetTCPConnection -LocalPort 8500).OwningProcess -Force
 ```
+
+Restart the MCP server after upgrading code or changing environment variables so tool handlers pick up the changes.
 
 ## Configuration
 
@@ -321,7 +399,12 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8500).OwningProcess -Force
 | `DIGIKEY_LOCALE_CURRENCY` | `USD` | DigiKey locale currency header |
 | `SAMACSYS_USERNAME` | — | Component Search Engine login (alias: `SAMACSYS_CSE_USERNAME`) |
 | `SAMACSYS_PASSWORD` | — | Component Search Engine password (alias: `SAMACSYS_CSE_PASSWORD`) |
+| `ULTRALIBRARIAN_USERNAME` | — | Ultra Librarian login (alias: `UL_USERNAME`) |
+| `ULTRALIBRARIAN_PASSWORD` | — | Ultra Librarian password (alias: `UL_PASSWORD`) |
 | `KICAD_MCP_SAMACSYS_DOWNLOAD_DIR` | OS default | Override SamacSys download output directory |
+| `KICAD_MCP_ULTRALIBRARIAN_DOWNLOAD_DIR` | OS default | Override Ultra Librarian download output directory |
+| `KICAD_MCP_ULTRALIBRARIAN_PLAYWRIGHT_TIMEOUT` | `240` | Playwright step timeout in seconds (SSO + download) |
+| `KICAD_MCP_ULTRALIBRARIAN_PLAYWRIGHT_HEADLESS` | `true` | Set `false` to show the browser window while debugging |
 | `KICAD_MCP_CONFIG_DIR` | OS default | Override credential/config directory |
 
 `kicad-cli` is auto-detected on Windows, macOS, and Linux. KiCad 10 name-only nets (e.g. `(net "GND")` on pads) are supported by the PCB parser.
@@ -359,6 +442,12 @@ Or invoke the `full_design_review` MCP prompt for a guided checklist.
 
 ```powershell
 uv run python -m unittest discover -s tests -v
+```
+
+Ultra Librarian tests (mock Playwright; no browser required):
+
+```powershell
+uv run --extra playwright python -m unittest tests.test_ultralibrarian -v
 ```
 
 ### KiCad CLI smoke test (no MCP server)

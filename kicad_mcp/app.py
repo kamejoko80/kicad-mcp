@@ -32,9 +32,9 @@ mcp = FastMCP(
         "For BOM/part lookup, configure Mouser or DigiKey credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
         "or search_components_by_part_number (provider='mouser' or 'digikey'). "
-        "For KiCad symbols/footprints, configure SamacSys credentials with "
-        "set_ecad_provider_credentials, then use "
-        "search_ecad_components and download_ecad_component_library."
+        "For KiCad symbols/footprints, configure SamacSys or Ultra Librarian credentials with "
+        "set_ecad_provider_credentials, then use search_ecad_components and "
+        "download_ecad_component_library."
     ),
 )
 
