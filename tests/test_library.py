@@ -129,6 +129,32 @@ class MouserProviderTests(unittest.TestCase):
         self.assertEqual(record.manufacturer_part_number, "NE555P")
         self.assertEqual(record.price_breaks[0].price, "$0.50")
 
+    def test_search_by_part_number_uses_v1_without_manufacturer(self) -> None:
+        payload = {
+            "Errors": [],
+            "SearchResults": {
+                "NumberOfResult": 1,
+                "Parts": [
+                    {
+                        "MouserPartNumber": "603-RC0402FR-070RL",
+                        "ManufacturerPartNumber": "RC0402FR-070RL",
+                        "Manufacturer": "YAGEO",
+                        "Description": "0 ohm resistor",
+                        "PriceBreaks": [{"Quantity": 1, "Price": "$0.10", "Currency": "USD"}],
+                    }
+                ],
+            },
+        }
+
+        with patch.object(MouserProvider, "_post", return_value=payload) as post_mock:
+            result = self.provider.search_by_part_number("RC0402FR-070RL", match_mode="Exact")
+
+        post_mock.assert_called_once()
+        self.assertEqual(post_mock.call_args.args[0], "search/partnumber")
+        self.assertEqual(post_mock.call_args.kwargs.get("api_version"), "v1")
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].manufacturer_part_number, "RC0402FR-070RL")
+
     def test_search_by_part_number_requires_credentials(self) -> None:
         empty_store = CredentialStore(config_dir=Path(self.temp_dir.name))
         provider = MouserProvider(empty_store)

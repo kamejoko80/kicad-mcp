@@ -18,6 +18,7 @@ from kicad_mcp.library.models import ComponentRecord, PriceBreak, SearchResult
 from kicad_mcp.library.providers.base import ComponentSearchProvider, ProviderNotConfiguredError
 
 MOUSER_API_BASE = "https://api.mouser.com/api/v2"
+MOUSER_API_V1_BASE = "https://api.mouser.com/api/v1"
 KEYWORD_SEARCH_OPTIONS = {"None", "Rohs", "InStock", "RohsAndInStock"}
 PART_SEARCH_OPTIONS = {"Exact", "BeginsWith", "Contains"}
 PART_NUMBER_SEARCH_OPTIONS = {"None", "Exact"}
@@ -44,9 +45,10 @@ class MouserProvider(ComponentSearchProvider):
             )
         return api_key
 
-    def _post(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _post(self, endpoint: str, body: dict[str, Any], *, api_version: str = "v2") -> dict[str, Any]:
         api_key = self._require_api_key()
-        url = f"{MOUSER_API_BASE}/{endpoint.lstrip('/')}?apiKey={api_key}"
+        base = MOUSER_API_V1_BASE if api_version == "v1" else MOUSER_API_BASE
+        url = f"{base}/{endpoint.lstrip('/')}?apiKey={api_key}"
         payload = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             url,
@@ -261,16 +263,12 @@ class MouserProvider(ComponentSearchProvider):
             payload = self._post(endpoint, body)
             return self._build_result(query=query, search_type="part_number", payload=payload)
 
-        keyword = joined_parts if match_mode == "Exact" else cleaned_part
-        request_body: dict[str, Any] = {
-            "keyword": keyword,
-            "records": MAX_RECORDS,
-            "pageNumber": 1,
-            "searchOptions": "None",
+        body = {
+            "SearchByPartRequest": {
+                "mouserPartNumber": joined_parts,
+                "partSearchOptions": part_search_options,
+            }
         }
-        if cleaned_manufacturer:
-            request_body["manufacturerName"] = cleaned_manufacturer
-        body = {"SearchByKeywordMfrNameRequest": request_body}
-        query = f"{keyword} ({cleaned_manufacturer})" if cleaned_manufacturer else keyword
-        payload = self._post("search/keywordandmanufacturer", body)
+        query = joined_parts
+        payload = self._post("search/partnumber", body, api_version="v1")
         return self._build_result(query=query, search_type="part_number", payload=payload)

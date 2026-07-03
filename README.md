@@ -56,8 +56,11 @@ kicad-mcp/
       ecad_tools.py         # SamacSys MCP download/search tools
   tests/
     test_pcb_model.py       # PCB parser unit tests
+    test_bom_cost_mouser.py # BOM cost Excel helper tests
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
     integration_test.py     # MCP server integration test
+  scripts/
+    build_bom_cost_excel.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
   img/
     kicad-mcp-workflow.png
   pyproject.toml
@@ -200,6 +203,55 @@ search_components_by_part_number(
   match_mode: "Exact"
 )
 ```
+
+### BOM cost Excel (`scripts/build_bom_cost_excel.py`)
+
+Build a **BOM cost estimate workbook** (`.xlsx`) from a KiCad BOM CSV export. Mouser unit pricing is fetched **only through the running MCP server** — the script does not read `MOUSER_API_KEY` from its own terminal.
+
+**Prerequisites**
+
+1. KiCad BOM CSV (e.g. from fabrication exports) with columns such as `References`, `Value`, `Manufacturer_Name`, `Manufacturer_Part_Number`, `Quantity`, and optional `Note`.
+2. MCP server running with Mouser configured (`MOUSER_API_KEY` in the **MCP server** process, or persisted credentials the server can load).
+3. One-off Python dependency: `openpyxl` (via `uv run --with openpyxl`).
+
+**Terminal 1 — start MCP with Mouser key**
+
+```powershell
+$env:MOUSER_API_KEY = "your-search-api-key"
+cd D:\Workspace\FW\kicad-mcp
+uv run python -m kicad_mcp
+```
+
+**Terminal 2 — build the workbook**
+
+```powershell
+cd D:\Workspace\FW\kicad-mcp
+uv run --with openpyxl python scripts/build_bom_cost_excel.py `
+  "D:\path\to\project\fabrication\bom\my_design.csv" `
+  "D:\path\to\project\fabrication\bom\my_design_bom_cost.xlsx"
+```
+
+If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_bom_cost.xlsx`. If the output file is open in Excel, the script saves to `<stem>_updated.xlsx` instead.
+
+**Optional flag**
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--mcp-url` | `http://127.0.0.1:8500/mcp` | MCP server URL for Mouser lookups |
+
+**Workbook layout**
+
+| Section | Contents |
+|---------|----------|
+| Header | Source BOM path, **PCBA Quantity** input cell (`B3`, default `1`) |
+| Placed — Available on Mouser | Unit price, BOM qty, line total per board, Mouser P/N, availability |
+| Total / Board (Mouser) | Sum of Mouser line totals for one board |
+| Placed — Not on Mouser | Same columns; unit price defaults to `0` (editable for manual quotes) |
+| Total (Not on Mouser × PCBA Qty) | Sum of non-Mouser line totals × `B3` |
+| Combined BOM Cost Summary | Mouser per-board total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
+| Do Not Place (DNP) | Rows with `Note = "Do not place"` or `(DNP)` in value — excluded from pricing |
+
+Change **PCBA Quantity** in `B3` to recalculate non-Mouser totals and the combined/grand totals. Enter manual unit prices in the non-Mouser table to include alternate sourcing in the combined cost.
 
 **DigiKey setup**
 
@@ -404,7 +456,7 @@ Restart the MCP server after upgrading code or changing environment variables so
 | `KICAD_CLI` | auto-detected | Path to `kicad-cli` |
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
-| `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`) |
+| `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`); set on the **MCP server** process. Used by MCP tools and `scripts/build_bom_cost_excel.py` (via MCP, not the script terminal). |
 | `DIGIKEY_CLIENT_ID` | — | DigiKey OAuth2 client ID |
 | `DIGIKEY_CLIENT_SECRET` | — | DigiKey OAuth2 client secret |
 | `DIGIKEY_ACCESS_TOKEN` | — | Optional pre-issued DigiKey bearer token |
@@ -463,6 +515,12 @@ Ultra Librarian tests (mock Playwright; no browser required):
 
 ```powershell
 uv run --extra playwright python -m unittest tests.test_ultralibrarian -v
+```
+
+BOM cost Excel helper tests:
+
+```powershell
+uv run --with openpyxl python -m unittest tests.test_bom_cost_mouser -v
 ```
 
 ### KiCad CLI smoke test (no MCP server)
