@@ -57,11 +57,13 @@ kicad-mcp/
       ecad_tools.py         # SamacSys MCP download/search tools
   tests/
     test_pcb_model.py       # PCB parser unit tests
-    test_bom_cost_mouser.py # BOM cost Excel helper tests
+    test_bom_cost_mouser.py # BOM cost Excel helper tests (Mouser)
+    test_bom_cost_lcsc.py   # BOM cost Excel helper tests (LCSC)
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
     integration_test.py     # MCP server integration test
   scripts/
     build_bom_cost_excel_mouser.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
+    build_bom_cost_excel_lcsc.py   # BOM cost Excel workbook from KiCad BOM CSV (LCSC via MCP)
   img/
     kicad-mcp-workflow.png
   pyproject.toml
@@ -253,6 +255,36 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 | Do Not Place (DNP) | Rows with `Note = "Do not place"` or `(DNP)` in value — excluded from pricing |
 
 Mouser **unit price follows quantity breaks** from the API (e.g. 1 pc vs 100 pcs). **Order Qty** is `BOM Qty / Board × PCBA Quantity` (`B3`); the unit price formula picks the best Mouser tier for that order quantity and updates when you change `B3`.
+
+### BOM cost Excel — LCSC (`scripts/build_bom_cost_excel_lcsc.py`)
+
+Same workbook layout as the Mouser script, but pricing comes from **LCSC** via the running MCP server. No API key is required — only the MCP server must be running.
+
+**Terminal 1 — start MCP**
+
+```powershell
+cd D:\Workspace\FW\kicad-mcp
+uv run python -m kicad_mcp
+```
+
+**Terminal 2 — build the LCSC workbook**
+
+```powershell
+cd D:\Workspace\FW\kicad-mcp
+uv run --with openpyxl python scripts/build_bom_cost_excel_lcsc.py `
+  "D:\path\to\project\fabrication\bom\my_design.csv" `
+  "D:\path\to\project\fabrication\bom\my_design_bom_cost_lcsc.xlsx"
+```
+
+If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_bom_cost_lcsc.xlsx`.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--mcp-url` | `http://127.0.0.1:8500/mcp` | MCP server URL for LCSC lookups |
+
+LCSC **unit price follows quantity breaks** from the official wmsc API (e.g. MOQ 5 vs 1000 pcs). Change **PCBA Quantity** in cell `B3` to recalculate order qty and tiered unit prices.
+
+The LCSC table splits subtotals into **Total LCSC (instock)** and **Total LCSC (outstock)** based on each line’s availability column; the combined summary mirrors the same split.
 
 **DigiKey setup**
 
@@ -560,6 +592,7 @@ BOM cost Excel helper tests:
 
 ```powershell
 uv run --with openpyxl python -m unittest tests.test_bom_cost_mouser -v
+uv run --with openpyxl python -m unittest tests.test_bom_cost_lcsc -v
 ```
 
 LCSC provider tests:
