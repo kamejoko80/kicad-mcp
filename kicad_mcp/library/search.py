@@ -25,7 +25,7 @@ def register(mcp) -> None:
     @mcp.tool()
     def get_component_provider_status(provider: str = "") -> str:
         """
-        Show credential status for component search providers (Mouser, DigiKey).
+        Show credential status for component search providers (Mouser, DigiKey, LCSC).
 
         When provider is omitted, returns status for all registered providers.
         """
@@ -62,7 +62,8 @@ def register(mcp) -> None:
         Configure distributor credentials for component search.
 
         Mouser uses a Search API key (api_key). DigiKey uses OAuth2 client_id and
-        client_secret (Product Information V4). Set persist=true to write credentials
+        client_secret (Product Information V4). LCSC uses unofficial wmsc.lcsc.com
+        endpoints and does not require credentials. Set persist=true to write credentials
         to the local kicad-mcp config directory.
         """
         store = get_credential_store()
@@ -86,6 +87,16 @@ def register(mcp) -> None:
                     client_secret=client_secret,
                     access_token=access_token,
                     persist=persist,
+                )
+            elif provider_id.value == "lcsc":
+                return _json_response(
+                    {
+                        "message": (
+                            "Provider 'lcsc' does not require credentials. "
+                            "It uses unofficial LCSC wmsc.lcsc.com endpoints."
+                        ),
+                        "provider": store.get_provider_status(provider_id).to_dict(),
+                    }
                 )
         except ValueError as exc:
             return _json_response({"error": str(exc)})
@@ -118,8 +129,16 @@ def register(mcp) -> None:
 
         if provider_id.value == "mouser":
             store.clear_mouser_api_key(clear_persisted=clear_persisted)
-        else:
+        elif provider_id.value == "digikey":
             store.clear_digikey_credentials(clear_persisted=clear_persisted)
+        elif provider_id.value == "lcsc":
+            return _json_response(
+                {
+                    "message": "Provider 'lcsc' has no credentials to clear.",
+                    "clear_persisted": clear_persisted,
+                    "provider": store.get_provider_status(provider_id).to_dict(),
+                }
+            )
 
         status = store.get_provider_status(provider_id).to_dict()
         return _json_response(
@@ -141,8 +160,8 @@ def register(mcp) -> None:
         """
         Search distributor catalogs by keyword.
 
-        provider: mouser (default) or digikey.
-        search_options (Mouser/DigiKey): None, Rohs, InStock, RohsAndInStock.
+        provider: mouser (default), digikey, or lcsc.
+        search_options (Mouser/DigiKey/LCSC): None, Rohs, InStock, RohsAndInStock.
         records: max 50 per API call.
         """
         logger.info("Keyword component search via %s: %s", provider, keyword)
@@ -177,7 +196,7 @@ def register(mcp) -> None:
         Accepts distributor or manufacturer part numbers (MPN).
         Separate up to 10 part numbers with '|'. Optional manufacturer narrows results.
         match_mode: Exact, BeginsWith, Contains.
-        provider: mouser (default) or digikey.
+        provider: mouser (default), digikey, or lcsc.
         """
         logger.info("Part-number component search via %s: %s", provider, part_number)
         try:

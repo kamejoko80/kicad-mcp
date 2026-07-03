@@ -307,8 +307,10 @@ class RegistryTests(unittest.TestCase):
         store = CredentialStore(config_dir=Path(tempfile.mkdtemp()))
         mouser = get_provider("mouser", credential_store=store)
         digikey = get_provider("digikey", credential_store=store)
+        lcsc = get_provider("lcsc", credential_store=store)
         self.assertEqual(mouser.display_name, "Mouser")
         self.assertEqual(digikey.display_name, "DigiKey")
+        self.assertEqual(lcsc.display_name, "LCSC")
 
 
 if __name__ == "__main__":

@@ -11,11 +11,13 @@ from typing import Type
 from kicad_mcp.library.credentials import CredentialStore, ProviderId, get_credential_store
 from kicad_mcp.library.providers.base import ComponentSearchProvider
 from kicad_mcp.library.providers.digikey import DigiKeyProvider
+from kicad_mcp.library.providers.lcsc import LCSCProvider
 from kicad_mcp.library.providers.mouser import MouserProvider
 
 _PROVIDER_TYPES: dict[ProviderId, Type[ComponentSearchProvider]] = {
     ProviderId.MOUSER: MouserProvider,
     ProviderId.DIGIKEY: DigiKeyProvider,
+    ProviderId.LCSC: LCSCProvider,
 }
 
 

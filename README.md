@@ -43,11 +43,12 @@ kicad-mcp/
       search.py             # MCP component search tools
       credentials.py        # distributor API key / token storage
       models.py             # normalized component records
-      registry.py           # provider registry (Mouser, DigiKey, ...)
+      registry.py           # provider registry (Mouser, DigiKey, LCSC, ...)
       providers/
         base.py             # provider interface
         mouser.py           # Mouser Search API client
         digikey.py          # DigiKey Product Information V4 (OAuth2)
+        lcsc.py             # LCSC search via wmsc.lcsc.com unofficial API
       ecad/
         models.py           # ECAD part match / download models
         samacsys.py         # SamacSys Component Search Engine client
@@ -156,14 +157,14 @@ Default export layout:
 
 ### Component library tools
 
-Search distributor catalogs for parts (Mouser and DigiKey).
+Search distributor catalogs for parts (Mouser, DigiKey, and LCSC).
 
 | Tool | Description |
 |------|-------------|
-| `get_component_provider_status` | Show credential status for Mouser / DigiKey providers |
+| `get_component_provider_status` | Show credential status for Mouser / DigiKey / LCSC providers |
 | `set_component_provider_credentials` | Set Mouser API key or DigiKey OAuth client credentials; optional persist to disk |
 | `clear_component_provider_credentials` | Clear session or persisted credentials |
-| `search_components_by_keyword` | Keyword search (Mouser or DigiKey) |
+| `search_components_by_keyword` | Keyword search (Mouser, DigiKey, or LCSC) |
 | `search_components_by_part_number` | Part-number / MPN search with optional manufacturer filter |
 
 **Mouser setup**
@@ -287,7 +288,45 @@ search_components_by_part_number(
 )
 ```
 
-Returns normalized JSON records: MPN, distributor PN, manufacturer, description, stock, lead time, RoHS, price breaks, datasheet URL.
+**LCSC setup (no API key)**
+
+LCSC search uses unofficial `wmsc.lcsc.com` endpoints (product detail and encrypted global search). No registration or credentials are required — the provider is always ready to use.
+
+```
+get_component_provider_status(provider="lcsc")
+```
+
+**Example — LCSC keyword search**
+
+```
+search_components_by_keyword(
+  keyword: "100nF 0402 X7R capacitor",
+  provider: "lcsc",
+  records: 10,
+  search_options: "InStock"
+)
+```
+
+**Example — LCSC part lookup (MPN or LCSC code)**
+
+```
+search_components_by_part_number(
+  part_number: "C8734",
+  provider: "lcsc",
+  match_mode: "Exact"
+)
+```
+
+Also accepts manufacturer part numbers (e.g. `STM32F103C8T6`) and LCSC codes with or without the `C` prefix.
+
+Returns normalized JSON records: LCSC code, MPN, manufacturer, description, stock, RoHS, **full LCSC price ladder**, datasheet URL, and LCSC product URL.
+
+**LCSC API notes**
+
+- Unofficial endpoints used by the LCSC website — not a documented public API; behavior may change.
+- LCSC codes (`Cxxxxx`) are fetched via `product/detail` for data that matches the official product page.
+- Keyword/MPN search uses encrypted `search/v3/global`; broad queries may return a subset of matches with a warning when LCSC reports more hits than the API returns.
+- RoHS and in-stock filters are applied client-side from LCSC fields.
 
 ### ECAD library tools
 
@@ -521,6 +560,12 @@ BOM cost Excel helper tests:
 
 ```powershell
 uv run --with openpyxl python -m unittest tests.test_bom_cost_mouser -v
+```
+
+LCSC provider tests:
+
+```powershell
+uv run python -m unittest tests.test_lcsc -v
 ```
 
 ### KiCad CLI smoke test (no MCP server)

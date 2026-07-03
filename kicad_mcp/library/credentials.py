@@ -20,6 +20,7 @@ from typing import Any
 class ProviderId(str, Enum):
     MOUSER = "mouser"
     DIGIKEY = "digikey"
+    LCSC = "lcsc"
     SAMACSYS = "samacsys"
     ULTRALIBRARIAN = "ultralibrarian"
 
@@ -27,6 +28,7 @@ class ProviderId(str, Enum):
 PROVIDER_AUTH_TYPES: dict[ProviderId, str] = {
     ProviderId.MOUSER: "api_key",
     ProviderId.DIGIKEY: "oauth2",
+    ProviderId.LCSC: "none",
     ProviderId.SAMACSYS: "basic_auth",
     ProviderId.ULTRALIBRARIAN: "session_login",
 }
@@ -360,6 +362,7 @@ class CredentialStore:
         display_names = {
             ProviderId.MOUSER: "Mouser",
             ProviderId.DIGIKEY: "DigiKey",
+            ProviderId.LCSC: "LCSC",
             ProviderId.SAMACSYS: "SamacSys Component Search Engine",
             ProviderId.ULTRALIBRARIAN: "Ultra Librarian",
         }
@@ -418,6 +421,20 @@ class CredentialStore:
                 source=source,
                 masked_credential=masked,
                 notes=notes,
+            )
+
+        if provider == ProviderId.LCSC:
+            return ProviderCredentialStatus(
+                provider=provider.value,
+                display_name=display_names[provider],
+                auth_type=auth_type,
+                configured=True,
+                source="public",
+                masked_credential=None,
+                notes=(
+                    "Uses unofficial LCSC wmsc.lcsc.com endpoints (product detail and encrypted search). "
+                    "No API key or credentials are required."
+                ),
             )
 
         digikey_values, source = self.get_digikey_credentials()
