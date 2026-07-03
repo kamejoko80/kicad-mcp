@@ -50,6 +50,22 @@ class BomMouserLookupTests(unittest.TestCase):
         self.assertIn("IFERROR", formula)
         self.assertIn("2500", formula)
 
+    def test_is_mouser_in_stock_uses_stock_quantity(self) -> None:
+        self.assertTrue(
+            bom_cost.is_mouser_in_stock({"stock_quantity": "421", "availability": "421 In Stock"})
+        )
+        self.assertFalse(
+            bom_cost.is_mouser_in_stock(
+                {"stock_quantity": "0", "availability": "Factory Lead Time"}
+            )
+        )
+
+    def test_format_availability_label_normalizes_out_of_stock(self) -> None:
+        label = bom_cost.format_availability_label(
+            {"stock_quantity": "0", "availability": "Factory Lead Time"}
+        )
+        self.assertEqual(label, "Out of Stock")
+
     def test_normalized_price_breaks_skip_na_prices(self) -> None:
         from kicad_mcp.library.models import ComponentRecord, PriceBreak
 

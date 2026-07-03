@@ -248,13 +248,14 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 |---------|----------|
 | Header | Source BOM path, **PCBA Quantity** input cell (`B3`, default `1`) |
 | Placed — Available on Mouser | BOM qty per board, **Order Qty** (`BOM × PCBA`), tiered **Unit Price** from Mouser price breaks, line total, Mouser P/N, availability |
-| Total (Mouser) | Sum of Mouser line totals for the full build quantity |
+| Total Mouser (instock) | Sum of line totals where Availability shows in-stock |
+| Total Mouser (outstock) | Sum of line totals where Availability shows out-of-stock |
 | Placed — Not on Mouser | Same columns; unit price defaults to `0` (editable for manual quotes) |
 | Total (Not on Mouser × PCBA Qty) | Sum of non-Mouser line totals × `B3` |
-| Combined BOM Cost Summary | Mouser total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
+| Combined BOM Cost Summary | Mouser instock total, Mouser outstock total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
 | Do Not Place (DNP) | Rows with `Note = "Do not place"` or `(DNP)` in value — excluded from pricing |
 
-Mouser **unit price follows quantity breaks** from the API (e.g. 1 pc vs 100 pcs). **Order Qty** is `BOM Qty / Board × PCBA Quantity` (`B3`); the unit price formula picks the best Mouser tier for that order quantity and updates when you change `B3`.
+Mouser **unit price follows quantity breaks** from the API (e.g. 1 pc vs 100 pcs). **Order Qty** is `BOM Qty / Board × PCBA Quantity` (`B3`); the unit price formula picks the best Mouser tier for that order quantity and updates when you change `B3`. Subtotals split into **Total Mouser (instock)** and **Total Mouser (outstock)** based on each line’s availability.
 
 ### BOM cost Excel — LCSC (`scripts/build_bom_cost_excel_lcsc.py`)
 

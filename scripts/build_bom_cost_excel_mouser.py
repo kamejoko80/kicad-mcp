@@ -165,6 +165,7 @@ def record_to_lookup_entry(record) -> dict[str, object]:
         "unit_price": unit_price_for_order_qty(breaks, 1),
         "mouser_pn": record.distributor_part_number,
         "availability": record.availability,
+        "stock_quantity": record.stock_quantity,
         "description": record.description,
     }
 
@@ -175,8 +176,39 @@ def empty_lookup_entry() -> dict[str, object]:
         "unit_price": 0.0,
         "mouser_pn": "",
         "availability": "",
+        "stock_quantity": "",
         "description": "",
     }
+
+
+def is_mouser_in_stock(info: dict[str, object]) -> bool:
+    stock_text = str(info.get("stock_quantity", "")).strip()
+    if stock_text:
+        try:
+            return int(float(stock_text)) > 0
+        except ValueError:
+            pass
+    availability = str(info.get("availability", "")).casefold()
+    if "out of stock" in availability:
+        return False
+    return "in stock" in availability
+
+
+def format_availability_label(info: dict[str, object]) -> str:
+    if is_mouser_in_stock(info):
+        stock_text = str(info.get("stock_quantity", "")).strip()
+        if stock_text:
+            try:
+                quantity = int(float(stock_text))
+                if quantity > 0:
+                    return f"{quantity} In Stock"
+            except ValueError:
+                pass
+        availability = str(info.get("availability", "")).strip()
+        if availability and "in stock" in availability.casefold():
+            return availability
+        return "In Stock"
+    return "Out of Stock"
 
 
 def pick_exact_dict(records: list[dict], mpn: str) -> dict | None:
@@ -424,6 +456,7 @@ def _dict_to_record(item: dict):
         manufacturer=str(item.get("manufacturer", "")),
         description=str(item.get("description", "")),
         availability=str(item.get("availability", "")),
+        stock_quantity=str(item.get("stock_quantity", "")),
         price_breaks=price_breaks,
     )
 
@@ -530,21 +563,36 @@ def build_workbook(
         total_cell = ws.cell(row=current_row, column=9, value=f"={order_qty_ref}*H{current_row}")
         total_cell.number_format = "$0.0000"
         ws.cell(row=current_row, column=10, value=str(info.get("mouser_pn", "")))
-        ws.cell(row=current_row, column=11, value=str(info.get("availability", "")))
+        ws.cell(row=current_row, column=11, value=format_availability_label(info))
         current_row += 1
 
     last_data_row = current_row - 1
-    mouser_total_row: int | None = None
+    mouser_instock_total_row: int | None = None
+    mouser_outstock_total_row: int | None = None
     if available:
-        ws.cell(row=current_row, column=5, value="Total (Mouser)").font = Font(bold=True)
-        mouser_total_cell = ws.cell(
+        availability_range = f"K{first_data_row}:K{last_data_row}"
+        line_total_range = f"I{first_data_row}:I{last_data_row}"
+
+        ws.cell(row=current_row, column=5, value="Total Mouser (instock)").font = Font(bold=True)
+        mouser_instock_total_cell = ws.cell(
             row=current_row,
             column=9,
-            value=f"=SUM(I{first_data_row}:I{last_data_row})",
+            value=f'=SUMIF({availability_range},"*In Stock*",{line_total_range})',
         )
-        mouser_total_cell.font = Font(bold=True)
-        mouser_total_cell.number_format = "$0.00"
-        mouser_total_row = current_row
+        mouser_instock_total_cell.font = Font(bold=True)
+        mouser_instock_total_cell.number_format = "$0.00"
+        mouser_instock_total_row = current_row
+        current_row += 1
+
+        ws.cell(row=current_row, column=5, value="Total Mouser (outstock)").font = Font(bold=True)
+        mouser_outstock_total_cell = ws.cell(
+            row=current_row,
+            column=9,
+            value=f'=SUMIF({availability_range},"*Out of Stock*",{line_total_range})',
+        )
+        mouser_outstock_total_cell.font = Font(bold=True)
+        mouser_outstock_total_cell.number_format = "$0.00"
+        mouser_outstock_total_row = current_row
         current_row += 2
     else:
         current_row += 1
@@ -597,12 +645,18 @@ def build_workbook(
 
     write_table_title(ws, current_row, "Combined BOM Cost Summary")
     current_row += 1
-    mouser_total_ref = f"I{mouser_total_row}" if mouser_total_row else "0"
+    mouser_instock_total_ref = f"I{mouser_instock_total_row}" if mouser_instock_total_row else "0"
+    mouser_outstock_total_ref = f"I{mouser_outstock_total_row}" if mouser_outstock_total_row else "0"
     non_mouser_total_ref = f"H{non_mouser_total_row}" if non_mouser_total_row else "0"
 
-    ws.cell(row=current_row, column=5, value="Total — Mouser Available").font = Font(bold=True)
-    ws.cell(row=current_row, column=9, value=f"={mouser_total_ref}").number_format = "$0.00"
-    mouser_summary_row = current_row
+    ws.cell(row=current_row, column=5, value="Total — Mouser (instock)").font = Font(bold=True)
+    ws.cell(row=current_row, column=9, value=f"={mouser_instock_total_ref}").number_format = "$0.00"
+    mouser_instock_summary_row = current_row
+    current_row += 1
+
+    ws.cell(row=current_row, column=5, value="Total — Mouser (outstock)").font = Font(bold=True)
+    ws.cell(row=current_row, column=9, value=f"={mouser_outstock_total_ref}").number_format = "$0.00"
+    mouser_outstock_summary_row = current_row
     current_row += 1
 
     ws.cell(row=current_row, column=5, value="Total — Not on Mouser (× PCBA Qty)").font = Font(bold=True)
@@ -614,7 +668,9 @@ def build_workbook(
     combined_total_cell = ws.cell(
         row=current_row,
         column=9,
-        value=f"=I{mouser_summary_row}+I{non_mouser_summary_row}",
+        value=(
+            f"=I{mouser_instock_summary_row}+I{mouser_outstock_summary_row}+I{non_mouser_summary_row}"
+        ),
     )
     combined_total_cell.font = Font(bold=True, size=12)
     combined_total_cell.number_format = "$0.00"
