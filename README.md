@@ -60,7 +60,7 @@ kicad-mcp/
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
     integration_test.py     # MCP server integration test
   scripts/
-    build_bom_cost_excel.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
+    build_bom_cost_excel_mouser.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
   img/
     kicad-mcp-workflow.png
   pyproject.toml
@@ -204,7 +204,7 @@ search_components_by_part_number(
 )
 ```
 
-### BOM cost Excel (`scripts/build_bom_cost_excel.py`)
+### BOM cost Excel (`scripts/build_bom_cost_excel_mouser.py`)
 
 Build a **BOM cost estimate workbook** (`.xlsx`) from a KiCad BOM CSV export. Mouser unit pricing is fetched **only through the running MCP server** — the script does not read `MOUSER_API_KEY` from its own terminal.
 
@@ -226,7 +226,7 @@ uv run python -m kicad_mcp
 
 ```powershell
 cd D:\Workspace\FW\kicad-mcp
-uv run --with openpyxl python scripts/build_bom_cost_excel.py `
+uv run --with openpyxl python scripts/build_bom_cost_excel_mouser.py `
   "D:\path\to\project\fabrication\bom\my_design.csv" `
   "D:\path\to\project\fabrication\bom\my_design_bom_cost.xlsx"
 ```
@@ -244,14 +244,14 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 | Section | Contents |
 |---------|----------|
 | Header | Source BOM path, **PCBA Quantity** input cell (`B3`, default `1`) |
-| Placed — Available on Mouser | Unit price, BOM qty, line total per board, Mouser P/N, availability |
-| Total / Board (Mouser) | Sum of Mouser line totals for one board |
+| Placed — Available on Mouser | BOM qty per board, **Order Qty** (`BOM × PCBA`), tiered **Unit Price** from Mouser price breaks, line total, Mouser P/N, availability |
+| Total (Mouser) | Sum of Mouser line totals for the full build quantity |
 | Placed — Not on Mouser | Same columns; unit price defaults to `0` (editable for manual quotes) |
 | Total (Not on Mouser × PCBA Qty) | Sum of non-Mouser line totals × `B3` |
-| Combined BOM Cost Summary | Mouser per-board total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
+| Combined BOM Cost Summary | Mouser total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
 | Do Not Place (DNP) | Rows with `Note = "Do not place"` or `(DNP)` in value — excluded from pricing |
 
-Change **PCBA Quantity** in `B3` to recalculate non-Mouser totals and the combined/grand totals. Enter manual unit prices in the non-Mouser table to include alternate sourcing in the combined cost.
+Mouser **unit price follows quantity breaks** from the API (e.g. 1 pc vs 100 pcs). **Order Qty** is `BOM Qty / Board × PCBA Quantity` (`B3`); the unit price formula picks the best Mouser tier for that order quantity and updates when you change `B3`.
 
 **DigiKey setup**
 
@@ -456,7 +456,7 @@ Restart the MCP server after upgrading code or changing environment variables so
 | `KICAD_CLI` | auto-detected | Path to `kicad-cli` |
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
-| `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`); set on the **MCP server** process. Used by MCP tools and `scripts/build_bom_cost_excel.py` (via MCP, not the script terminal). |
+| `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`); set on the **MCP server** process. Used by MCP tools and `scripts/build_bom_cost_excel_mouser.py` (via MCP, not the script terminal). |
 | `DIGIKEY_CLIENT_ID` | — | DigiKey OAuth2 client ID |
 | `DIGIKEY_CLIENT_SECRET` | — | DigiKey OAuth2 client secret |
 | `DIGIKEY_ACCESS_TOKEN` | — | Optional pre-issued DigiKey bearer token |

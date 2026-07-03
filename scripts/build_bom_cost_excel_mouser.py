@@ -1,7 +1,7 @@
 """Build a BOM cost Excel workbook with Mouser pricing.
 
 Usage:
-  uv run --with openpyxl python scripts/build_bom_cost_excel.py <bom.csv> [output.xlsx]
+  uv run --with openpyxl python scripts/build_bom_cost_excel_mouser.py <bom.csv> [output.xlsx]
 
 Mouser part data is fetched only through the KiCad MCP server (default: http://127.0.0.1:8500/mcp).
 Start the MCP server with MOUSER_API_KEY configured in that process before running this script.
@@ -76,27 +76,93 @@ def parse_bom_csv(path: Path) -> list[BomRow]:
     return rows
 
 
-def parse_unit_price(price_text: str) -> float:
+def parse_unit_price(price_text: str) -> float | None:
     cleaned = price_text.strip().replace("$", "").replace(",", "")
-    if not cleaned:
-        return 0.0
+    if not cleaned or cleaned.casefold() in {"na", "n/a", "quote", "rfq", "-"}:
+        return None
     try:
-        return float(cleaned)
+        value = float(cleaned)
     except ValueError:
-        return 0.0
+        return None
+    if value < 0:
+        return None
+    return value
 
 
-def unit_price_from_record(record) -> float:
-    if not record.price_breaks:
+def normalized_price_breaks(record) -> list[tuple[int, float]]:
+    breaks: list[tuple[int, float]] = []
+    for item in record.price_breaks:
+        try:
+            quantity = int(item.quantity or 0)
+        except (TypeError, ValueError):
+            quantity = 0
+        price = parse_unit_price(str(item.price))
+        if quantity <= 0 or price is None:
+            continue
+        breaks.append((quantity, price))
+    breaks.sort(key=lambda pair: pair[0])
+    if not breaks:
+        return breaks
+    deduped: list[tuple[int, float]] = []
+    for quantity, price in breaks:
+        if deduped and deduped[-1][0] == quantity:
+            deduped[-1] = (quantity, price)
+        else:
+            deduped.append((quantity, price))
+    return deduped
+
+
+def normalized_price_breaks_from_dict(item: dict) -> list[tuple[int, float]]:
+    breaks: list[tuple[int, float]] = []
+    for entry in item.get("price_breaks") or []:
+        try:
+            quantity = int(entry.get("quantity") or 0)
+        except (TypeError, ValueError):
+            quantity = 0
+        price = parse_unit_price(str(entry.get("price", "")))
+        if quantity <= 0 or price is None:
+            continue
+        breaks.append((quantity, price))
+    breaks.sort(key=lambda pair: pair[0])
+    return breaks
+
+
+def usable_price_breaks(breaks: list[tuple[int, float]]) -> list[tuple[int, float]]:
+    return [(quantity, price) for quantity, price in breaks if price > 0]
+
+
+def unit_price_for_order_qty(breaks: list[tuple[int, float]], order_qty: int) -> float:
+    if not breaks or order_qty <= 0:
         return 0.0
-    best = min(record.price_breaks, key=lambda item: item.quantity or 0)
-    return parse_unit_price(best.price)
+    unit_price = breaks[0][1]
+    for break_qty, break_price in breaks:
+        if break_qty <= order_qty:
+            unit_price = break_price
+        else:
+            break
+    return unit_price
+
+
+def excel_tiered_unit_price_formula(order_qty_expr: str, breaks: list[tuple[int, float]]) -> str:
+    usable = usable_price_breaks(breaks)
+    if not usable:
+        return "0"
+    qty_values = ",".join(str(qty) for qty, _ in usable)
+    price_values = ",".join(str(price) for _, price in usable)
+    # IFERROR: order qty below the lowest Mouser break otherwise yields MATCH #N/A.
+    return (
+        f"=IF({order_qty_expr}<=0,0,"
+        f"IFERROR(INDEX({{{price_values}}},MATCH({order_qty_expr},{{{qty_values}}},1)),"
+        f"INDEX({{{price_values}}},1)))"
+    )
 
 
 def record_to_lookup_entry(record) -> dict[str, object]:
+    breaks = normalized_price_breaks(record)
     return {
         "found": True,
-        "unit_price": unit_price_from_record(record),
+        "price_breaks": breaks,
+        "unit_price": unit_price_for_order_qty(breaks, 1),
         "mouser_pn": record.distributor_part_number,
         "availability": record.availability,
         "description": record.description,
@@ -331,7 +397,8 @@ async def lookup_mouser_prices_mcp(
                     tool_json=tool_json,
                 )
                 if item:
-                    lookup[mpn] = record_to_lookup_entry(_dict_to_record(item))
+                    record = _dict_to_record(item)
+                    lookup[mpn] = record_to_lookup_entry(record)
                 else:
                     lookup[mpn] = empty_lookup_entry()
                 await asyncio.sleep(0.5)
@@ -426,9 +493,10 @@ def build_workbook(
         "Value",
         "Manufacturer",
         "MPN",
-        "BOM Qty",
+        "BOM Qty / Board",
+        "Order Qty (BOM × PCBA)",
         "Mouser Unit Price (USD)",
-        "Line Total / Board (USD)",
+        "Line Total (USD)",
         "Mouser P/N",
         "Availability",
     ]
@@ -443,29 +511,36 @@ def build_workbook(
     first_data_row = current_row
 
     for row, info in available:
-        unit_price = float(info.get("unit_price", 0.0))
+        breaks = usable_price_breaks(list(info.get("price_breaks") or []))
         ws.cell(row=current_row, column=1, value=row.line)
         ws.cell(row=current_row, column=2, value=row.references)
         ws.cell(row=current_row, column=3, value=row.value)
         ws.cell(row=current_row, column=4, value=row.manufacturer)
         ws.cell(row=current_row, column=5, value=row.mpn)
         ws.cell(row=current_row, column=6, value=row.quantity)
-        price_cell = ws.cell(row=current_row, column=7, value=unit_price)
+        order_qty_cell = ws.cell(row=current_row, column=7, value=f"=F{current_row}*{pcba_cell}")
+        order_qty_cell.number_format = "0"
+        order_qty_ref = f"G{current_row}"
+        price_cell = ws.cell(
+            row=current_row,
+            column=8,
+            value=excel_tiered_unit_price_formula(order_qty_ref, breaks),
+        )
         price_cell.number_format = "$0.0000"
-        total_cell = ws.cell(row=current_row, column=8, value=f"=F{current_row}*G{current_row}")
+        total_cell = ws.cell(row=current_row, column=9, value=f"={order_qty_ref}*H{current_row}")
         total_cell.number_format = "$0.0000"
-        ws.cell(row=current_row, column=9, value=str(info.get("mouser_pn", "")))
-        ws.cell(row=current_row, column=10, value=str(info.get("availability", "")))
+        ws.cell(row=current_row, column=10, value=str(info.get("mouser_pn", "")))
+        ws.cell(row=current_row, column=11, value=str(info.get("availability", "")))
         current_row += 1
 
     last_data_row = current_row - 1
     mouser_total_row: int | None = None
     if available:
-        ws.cell(row=current_row, column=5, value="Total / Board (Mouser)").font = Font(bold=True)
+        ws.cell(row=current_row, column=5, value="Total (Mouser)").font = Font(bold=True)
         mouser_total_cell = ws.cell(
             row=current_row,
-            column=8,
-            value=f"=SUM(H{first_data_row}:H{last_data_row})",
+            column=9,
+            value=f"=SUM(I{first_data_row}:I{last_data_row})",
         )
         mouser_total_cell.font = Font(bold=True)
         mouser_total_cell.number_format = "$0.00"
@@ -522,24 +597,24 @@ def build_workbook(
 
     write_table_title(ws, current_row, "Combined BOM Cost Summary")
     current_row += 1
-    mouser_total_ref = f"H{mouser_total_row}" if mouser_total_row else "0"
+    mouser_total_ref = f"I{mouser_total_row}" if mouser_total_row else "0"
     non_mouser_total_ref = f"H{non_mouser_total_row}" if non_mouser_total_row else "0"
 
-    ws.cell(row=current_row, column=5, value="Total / Board — Mouser Available").font = Font(bold=True)
-    ws.cell(row=current_row, column=8, value=f"={mouser_total_ref}").number_format = "$0.00"
+    ws.cell(row=current_row, column=5, value="Total — Mouser Available").font = Font(bold=True)
+    ws.cell(row=current_row, column=9, value=f"={mouser_total_ref}").number_format = "$0.00"
     mouser_summary_row = current_row
     current_row += 1
 
     ws.cell(row=current_row, column=5, value="Total — Not on Mouser (× PCBA Qty)").font = Font(bold=True)
-    ws.cell(row=current_row, column=8, value=f"={non_mouser_total_ref}").number_format = "$0.00"
+    ws.cell(row=current_row, column=9, value=f"={non_mouser_total_ref}").number_format = "$0.00"
     non_mouser_summary_row = current_row
     current_row += 1
 
     ws.cell(row=current_row, column=5, value="Combined Total (All PCBA)").font = Font(bold=True)
     combined_total_cell = ws.cell(
         row=current_row,
-        column=8,
-        value=f"=H{mouser_summary_row}*{pcba_cell}+H{non_mouser_summary_row}",
+        column=9,
+        value=f"=I{mouser_summary_row}+I{non_mouser_summary_row}",
     )
     combined_total_cell.font = Font(bold=True, size=12)
     combined_total_cell.number_format = "$0.00"
@@ -550,8 +625,8 @@ def build_workbook(
     ws.cell(row=current_row, column=5, value="Grand Total").font = Font(bold=True)
     grand_total_cell = ws.cell(
         row=current_row,
-        column=8,
-        value=f"=H{combined_total_row}",
+        column=9,
+        value=f"=I{combined_total_row}",
     )
     grand_total_cell.font = Font(bold=True, size=12)
     grand_total_cell.number_format = "$0.00"
@@ -575,7 +650,7 @@ def build_workbook(
         ws.cell(row=current_row, column=7, value=row.note or "Do not place")
         current_row += 1
 
-    widths = [8, 28, 18, 22, 28, 10, 18, 18, 18, 24]
+    widths = [8, 28, 18, 22, 28, 12, 16, 18, 16, 18, 24]
     for index, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A6"
