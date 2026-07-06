@@ -727,7 +727,7 @@ def main() -> int:
         "output_xlsx",
         nargs="?",
         type=Path,
-        help="Output Excel path (default: <bom>_bom_cost.xlsx beside CSV)",
+        help="Output Excel path (default: <bom>_bom_cost_mouser.xlsx beside CSV)",
     )
     parser.add_argument(
         "--mcp-url",
@@ -744,7 +744,7 @@ def main() -> int:
     output_path = (
         args.output_xlsx.expanduser().resolve()
         if args.output_xlsx
-        else bom_path.with_name(f"{bom_path.stem}_bom_cost.xlsx")
+        else bom_path.with_name(f"{bom_path.stem}_bom_cost_mouser.xlsx")
     )
 
     bom_rows = parse_bom_csv(bom_path)
