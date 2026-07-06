@@ -425,6 +425,7 @@ def _parse_footprint(footprint_node: list[Any], net_names: dict[int, str]) -> di
   return {
     "ref": ref,
     "value": value,
+    "properties": properties,
     "footprint": footprint_name,
     "layer": layer,
     "side": side,

@@ -11,6 +11,7 @@ import logging
 
 from kicad_mcp import pcb_model
 from kicad_mcp.project import validate_project_dir
+from kicad_mcp.review.footprint_preview_svg import export_footprint_preview_image
 from kicad_mcp.review.pcb_region_svg import export_pcb_region_image as export_pcb_region_svg
 
 logger = logging.getLogger("kicad-hardware-agent")
@@ -28,6 +29,8 @@ def register(mcp) -> None:
 
         Includes pad size/shape/layer/net data, courtyard/fab/silk graphics,
         and absolute pad-center coordinates for layout review.
+        For an annotated PNG with package W/L/H and pad dimensions, use
+        `export_component_footprint_preview`.
         """
         logger.info("Reading footprint for %s in %s", ref, project_dir)
         error = validate_project_dir(project_dir)
@@ -43,6 +46,47 @@ def register(mcp) -> None:
             return _json_response(payload)
 
         payload["pcb_file"] = document.path
+        return _json_response(payload)
+
+    @mcp.tool()
+    def export_component_footprint_preview(
+        project_dir: str,
+        ref: str,
+        output_path: str = "",
+        png_min_pixels: int = 1400,
+        margin_mm: float = 2.5,
+    ) -> str:
+        """
+        Export an annotated footprint preview (SVG + PNG) for a PCB reference.
+
+        Uses KiCad's native `kicad-cli fp export svg` renderer when the footprint
+        library (.pretty) is resolvable from the project — this matches the
+        Footprint Editor appearance. Falls back to the built-in SVG renderer if
+        the library cannot be found or kicad-cli is unavailable.
+
+        Files are written under `<project_dir>/mcp_exports/review/footprints/`.
+        """
+        logger.info("Exporting footprint preview for %s in %s", ref, project_dir)
+        error = validate_project_dir(project_dir)
+        if error:
+            return _json_response({"error": error})
+
+        payload = export_footprint_preview_image(
+            project_dir,
+            ref,
+            output_path=output_path.strip(),
+            png_min_pixels=png_min_pixels,
+            margin_mm=margin_mm,
+        )
+        if "error" in payload:
+            return _json_response(payload)
+
+        png_path = payload.get("png_path")
+        if png_path:
+            from pathlib import Path
+
+            resolved = Path(str(png_path)).resolve()
+            payload["preview_link"] = f"[{resolved.name}]({resolved.as_uri()})"
         return _json_response(payload)
 
     @mcp.tool()

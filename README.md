@@ -115,6 +115,7 @@ These tools return **structured JSON** parsed from `.kicad_pcb`.
 | Tool | Parameters | Description |
 |------|------------|-------------|
 | `get_component_footprint` | `project_dir`, `ref` | Pad size/shape/layer/net, courtyard, fab outline, silkscreen, absolute pad centers |
+| `export_component_footprint_preview` | `project_dir`, `ref`, `output_path?`, `png_min_pixels?`, `margin_mm?` | Footprint preview PNG via **KiCad `fp export svg`** (Footprint Editor quality); falls back to built-in renderer; dimensions in JSON |
 | `get_component_placement` | `project_dir` | Placement table: ref, value, footprint, side, X/Y, rotation, DNP, bounding box |
 | `get_board_geometry` | `project_dir`, `layers?`, `include_graphics?` | Tracks, vias, copper zones, board graphics; optional layer filter e.g. `F.Cu,B.Cu` |
 | `analyze_copper_pours` | `project_dir` | Zone fill state, layer, net, hatch, thermal settings, outline, filled islands |
@@ -144,9 +145,13 @@ get_component_footprint(
   project_dir: "D:/path/to/project",
   ref: "U4"
 )
+export_component_footprint_preview(
+  project_dir: "D:/path/to/project",
+  ref: "U4"
+)
 ```
 
-Returns pad dimensions, exposed-pad (EP) size, courtyard polygons, and absolute coordinates — useful for verifying land patterns against datasheet recommendations.
+Returns pad dimensions, exposed-pad (EP) size, courtyard polygons, and absolute coordinates — useful for verifying land patterns against datasheet recommendations. The preview PNG adds dimension lines for package W/L/H, pad width/length, and pitch.
 
 ### Manufacturing tools
 

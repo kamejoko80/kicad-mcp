@@ -32,6 +32,8 @@ mcp = FastMCP(
         "then run ERC/DRC checks, geometry/footprint tools, and net analysis tools. "
         "Use list_schematic_pdf_pages and export_schematic_pdf for schematic PDF output. "
         "Use export_pcb_region_image to render cropped SVG snapshots at DRC coordinates. "
+        "Use export_component_footprint_preview for Footprint Editor-quality PNG/SVG of a "
+        "component reference (package dimensions included in JSON). "
         "check_pcb_drc returns a DRC snapshot table with PNG file links when violations exist. "
         "For BOM/part lookup, configure Mouser or DigiKey credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
@@ -93,4 +95,12 @@ def main() -> None:
     logger.info(
         "Starting KiCad MCP server on %s:%s (stateless_http=%s)", host, port, stateless
     )
-    mcp.run(transport="http", host=host, port=port, stateless_http=stateless)
+    try:
+        mcp.run(transport="http", host=host, port=port, stateless_http=stateless)
+    except KeyboardInterrupt:
+        # Uvicorn/asyncio cancel in-flight tool calls on Ctrl+C; exit cleanly.
+        logger.info("Server stopped (Ctrl+C)")
+
+
+if __name__ == "__main__":
+    main()
