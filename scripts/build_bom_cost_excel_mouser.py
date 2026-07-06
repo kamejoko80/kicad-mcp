@@ -606,7 +606,7 @@ def build_workbook(
         "Manufacturer",
         "MPN",
         "BOM Qty",
-        "Mouser Unit Price (USD)",
+        "Unit Price (USD)",
         "Line Total / Board (USD)",
     ]
     for col, title in enumerate(unavailable_headers, start=1):
