@@ -59,11 +59,13 @@ kicad-mcp/
     test_pcb_model.py       # PCB parser unit tests
     test_bom_cost_mouser.py # BOM cost Excel helper tests (Mouser)
     test_bom_cost_lcsc.py   # BOM cost Excel helper tests (LCSC)
+    test_bom_cost_digikey.py # BOM cost Excel helper tests (DigiKey)
     smoke_test.py           # KiCad CLI smoke test (no MCP server)
     integration_test.py     # MCP server integration test
   scripts/
     build_bom_cost_excel_mouser.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
     build_bom_cost_excel_lcsc.py   # BOM cost Excel workbook from KiCad BOM CSV (LCSC via MCP)
+    build_bom_cost_excel_digikeys.py # BOM cost Excel workbook from KiCad BOM CSV (DigiKey via MCP)
   img/
     kicad-mcp-workflow.png
   pyproject.toml
@@ -286,6 +288,36 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 LCSC **unit price follows quantity breaks** from the official wmsc API (e.g. MOQ 5 vs 1000 pcs). Change **PCBA Quantity** in cell `B3` to recalculate order qty and tiered unit prices.
 
 The LCSC table splits subtotals into **Total LCSC (instock)** and **Total LCSC (outstock)** based on each line’s availability column; the combined summary mirrors the same split.
+
+### BOM cost Excel — DigiKey (`scripts/build_bom_cost_excel_digikeys.py`)
+
+Same workbook layout as the Mouser/LCSC scripts. DigiKey pricing is fetched **only through the running MCP server** — configure DigiKey OAuth on the MCP server process (`DIGIKEY_CLIENT_ID` / `DIGIKEY_CLIENT_SECRET` or persisted credentials).
+
+**Terminal 1 — start MCP with DigiKey credentials**
+
+```powershell
+$env:DIGIKEY_CLIENT_ID = "your-client-id"
+$env:DIGIKEY_CLIENT_SECRET = "your-client-secret"
+cd D:\Workspace\FW\kicad-mcp
+uv run python -m kicad_mcp
+```
+
+**Terminal 2 — build the DigiKey workbook**
+
+```powershell
+cd D:\Workspace\FW\kicad-mcp
+uv run --with openpyxl python scripts/build_bom_cost_excel_digikeys.py `
+  "D:\path\to\project\fabrication\bom\my_design.csv" `
+  "D:\path\to\project\fabrication\bom\my_design_bom_cost_digikeys.xlsx"
+```
+
+If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_bom_cost_digikeys.xlsx`.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--mcp-url` | `http://127.0.0.1:8500/mcp` | MCP server URL for DigiKey lookups |
+
+Subtotals split into **Total DigiKey (instock)** and **Total DigiKey (outstock)**; tiered unit prices follow DigiKey quantity breaks.
 
 **DigiKey setup**
 
@@ -529,8 +561,8 @@ Restart the MCP server after upgrading code or changing environment variables so
 | `KICAD_MCP_HOST` | `127.0.0.1` | HTTP bind address |
 | `KICAD_MCP_PORT` | `8500` | HTTP port |
 | `MOUSER_API_KEY` | — | Mouser Search API key (alias: `MOUSER_SEARCH_API_KEY`); set on the **MCP server** process. Used by MCP tools and `scripts/build_bom_cost_excel_mouser.py` (via MCP, not the script terminal). |
-| `DIGIKEY_CLIENT_ID` | — | DigiKey OAuth2 client ID |
-| `DIGIKEY_CLIENT_SECRET` | — | DigiKey OAuth2 client secret |
+| `DIGIKEY_CLIENT_ID` | — | DigiKey OAuth2 client ID; set on the **MCP server** process. Used by MCP tools and `scripts/build_bom_cost_excel_digikeys.py` (via MCP). |
+| `DIGIKEY_CLIENT_SECRET` | — | DigiKey OAuth2 client secret; set on the **MCP server** process. |
 | `DIGIKEY_ACCESS_TOKEN` | — | Optional pre-issued DigiKey bearer token |
 | `DIGIKEY_SANDBOX` | `false` | Use `sandbox-api.digikey.com` when `true` |
 | `DIGIKEY_LOCALE_SITE` | `US` | DigiKey locale site header |
@@ -594,6 +626,7 @@ BOM cost Excel helper tests:
 ```powershell
 uv run --with openpyxl python -m unittest tests.test_bom_cost_mouser -v
 uv run --with openpyxl python -m unittest tests.test_bom_cost_lcsc -v
+uv run --with openpyxl python -m unittest tests.test_bom_cost_digikey -v
 ```
 
 LCSC provider tests:
