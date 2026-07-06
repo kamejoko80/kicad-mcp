@@ -11,6 +11,7 @@ import logging
 
 from kicad_mcp import pcb_model
 from kicad_mcp.project import validate_project_dir
+from kicad_mcp.review.pcb_region_svg import export_pcb_region_image as export_pcb_region_svg
 
 logger = logging.getLogger("kicad-hardware-agent")
 
@@ -122,3 +123,75 @@ def register(mcp) -> None:
             return _json_response({"error": load_error})
 
         return _json_response(pcb_model.analyze_net_routing(document, net_name))
+
+    @mcp.tool()
+    def export_pcb_region_image(
+        project_dir: str,
+        center_x_mm: float,
+        center_y_mm: float,
+        width_mm: float = 12.0,
+        height_mm: float = 12.0,
+        layers: str = "F.Cu,Edge.Cuts",
+        highlight_net: str = "",
+        marker: bool = True,
+        marker_label: str = "",
+        marker_size_mm: float = 0.4,
+        auto_zoom: bool = True,
+        search_radius_mm: float = 4.0,
+        padding_mm: float = 0.8,
+        min_window_mm: float = 6.0,
+        max_window_mm: float = 12.0,
+        include_silkscreen: bool = False,
+        png_min_pixels: int = 1400,
+        output_path: str = "",
+    ) -> str:
+        """
+        Export a cropped SVG (+ PNG preview) of a PCB region for layout/DRC review.
+
+        Renders geometry from the parsed `.kicad_pcb` file (tracks, pads, vias,
+        zones, board outline) within a rectangular window centered
+        at `center_x_mm`, `center_y_mm`. Use DRC coordinates directly.
+
+        Silkscreen is hidden by default (`include_silkscreen=False`) so copper,
+        pads, and vias stay readable. Set `include_silkscreen=True` to draw
+        F.Silkscreen and B.Silkscreen plus reference designators.
+
+        Set `auto_zoom=True` (default) to fit the window to pads/traces/vias
+        near the center point. PNG preview is rasterized at `png_min_pixels`
+        on the short side so details stay readable in chat.
+
+        Files are written under `<project_dir>/mcp_exports/review/` unless
+        `output_path` is set.
+        """
+        logger.info(
+            "Exporting PCB region snapshot at (%.3f, %.3f) for %s",
+            center_x_mm,
+            center_y_mm,
+            project_dir,
+        )
+        error = validate_project_dir(project_dir)
+        if error:
+            return _json_response({"error": error})
+
+        layer_list = [layer.strip() for layer in layers.split(",") if layer.strip()] or None
+        payload = export_pcb_region_svg(
+            project_dir,
+            center_x_mm=center_x_mm,
+            center_y_mm=center_y_mm,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            layers=layer_list,
+            highlight_net=highlight_net.strip(),
+            marker=marker,
+            marker_label=marker_label.strip(),
+            marker_size_mm=marker_size_mm,
+            auto_zoom=auto_zoom,
+            search_radius_mm=search_radius_mm,
+            padding_mm=padding_mm,
+            min_window_mm=min_window_mm,
+            max_window_mm=max_window_mm,
+            include_silkscreen=include_silkscreen,
+            output_path=output_path.strip(),
+            png_min_pixels=png_min_pixels,
+        )
+        return _json_response(payload)

@@ -31,6 +31,8 @@ mcp = FastMCP(
         "KiCad schematic and PCB layout review server. Start with get_project_info, "
         "then run ERC/DRC checks, geometry/footprint tools, and net analysis tools. "
         "Use list_schematic_pdf_pages and export_schematic_pdf for schematic PDF output. "
+        "Use export_pcb_region_image to render cropped SVG snapshots at DRC coordinates. "
+        "check_pcb_drc returns a DRC snapshot table with PNG file links when violations exist. "
         "For BOM/part lookup, configure Mouser or DigiKey credentials with "
         "set_component_provider_credentials, then use search_components_by_keyword "
         "or search_components_by_part_number (provider='mouser', 'digikey', or 'lcsc'). "

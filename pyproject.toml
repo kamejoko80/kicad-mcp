@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.110.0",
     "gmssl>=3.2.2",
     "uvicorn>=0.28.0",
+    "cairosvg>=2.7.0",
 ]
 
 [project.scripts]

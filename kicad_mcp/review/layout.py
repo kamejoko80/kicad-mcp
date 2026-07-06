@@ -12,16 +12,28 @@ from kicad_mcp import pcb_model
 from kicad_mcp.cli import read_output_file, run_kicad_cli_with_output
 from kicad_mcp.parsing import classify_nets, extract_pcb_net_names
 from kicad_mcp.project import find_project_files, validate_project_dir
+from kicad_mcp.review.drc_report import (
+    build_drc_tool_response,
+    export_drc_region_images,
+)
 
 logger = logging.getLogger("kicad-hardware-agent")
 
 
 def register(mcp) -> None:
     @mcp.tool()
-    def check_pcb_drc(project_dir: str) -> str:
+    def check_pcb_drc(
+        project_dir: str,
+        export_region_images: bool = True,
+        max_region_images: int = 5,
+    ) -> str:
         """
         Run KiCad Design Rules Check (DRC) on the project PCB layout and return
         the violation report.
+
+        When `export_region_images` is true (default), PNG snapshots are written
+        under `<project_dir>/mcp_exports/review/drc/` (SVG + PNG) and links each PNG
+        in a markdown table (Snapshot column) in the response.
         """
         logger.info("Running PCB DRC for: %s", project_dir)
         error = validate_project_dir(project_dir)
@@ -48,7 +60,16 @@ def register(mcp) -> None:
                     f"DRC clean. 0 layout violations or unconnected pads found on "
                     f"`{os.path.basename(paths.pcb_file)}`."
                 )
-            return f"### KiCad Layout DRC Report\n\n```text\n{report_content}\n```"
+
+            response = f"### KiCad Layout DRC Report\n\n```text\n{report_content}\n```"
+            if export_region_images:
+                exports = export_drc_region_images(
+                    project_dir,
+                    report_content,
+                    max_images=max(1, min(max_region_images, 20)),
+                )
+                return build_drc_tool_response(response, exports)
+            return response
 
         detail = result.stderr or result.stdout or "Unknown CLI error"
         return f"Failed to run DRC. CLI exit code {result.returncode}. Details: {detail}"

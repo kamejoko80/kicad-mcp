@@ -33,6 +33,9 @@ def register(mcp) -> None:
 
 1. Call `get_project_info`, `get_board_stats`, and `list_project_nets`.
 2. Run `check_pcb_drc` and resolve all violations.
+   - When DRC errors exist, `check_pcb_drc` returns a snapshot table with PNG file
+     links in the Snapshot column; files are saved under
+     `<project_dir>/mcp_exports/review/drc/`.
 3. Run `compare_sch_pcb_nets` to catch schematic/layout naming drift.
 4. For each power rail, call `inspect_net_trace` and verify trace width/current capacity.
 5. Review board stats for:
@@ -61,7 +64,7 @@ Phase 2 - Schematic review:
 
 Phase 3 - Layout review:
 - `get_board_stats`
-- `check_pcb_drc`
+- `check_pcb_drc` (link exported DRC error PNGs in the snapshot table when present)
 - `compare_sch_pcb_nets`
 - `list_project_nets`
 - `inspect_net_trace` for major power rails

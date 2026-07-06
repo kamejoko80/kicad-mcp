@@ -103,7 +103,7 @@ Omit `page_name` and `pages` to export all sheets. Use `schematic_path` to overr
 
 | Tool | Description |
 |------|-------------|
-| `check_pcb_drc` | Run Design Rules Check (DRC) |
+| `check_pcb_drc` | Run DRC; exports SVG+PNG under `<project_dir>/mcp_exports/review/drc/` and links PNGs in a `# \| Rule \| Location \| Snapshot` table (requires `cairosvg`) |
 | `get_board_stats` | Board size, pad/via counts, copper area (via `kicad-cli`) |
 | `list_project_nets` | All PCB nets grouped by power vs signal |
 | `inspect_net_trace` | Human-readable net routing summary with IPC-2152 estimate |
@@ -119,6 +119,23 @@ These tools return **structured JSON** parsed from `.kicad_pcb`.
 | `get_board_geometry` | `project_dir`, `layers?`, `include_graphics?` | Tracks, vias, copper zones, board graphics; optional layer filter e.g. `F.Cu,B.Cu` |
 | `analyze_copper_pours` | `project_dir` | Zone fill state, layer, net, hatch, thermal settings, outline, filled islands |
 | `analyze_net_routing` | `project_dir`, `net_name` | Segments, vias, zones, pads, connectivity islands, IPC-2152 estimate |
+| `export_pcb_region_image` | `project_dir`, `center_x_mm`, `center_y_mm`, `width_mm?`, `height_mm?`, `layers?`, `highlight_net?`, `marker?`, `marker_label?`, `auto_zoom?`, `include_silkscreen?`, `png_min_pixels?`, `output_path?` | Cropped SVG/PNG snapshot; silkscreen hidden by default |
+
+**Example — DRC violation snapshot:**
+
+```
+export_pcb_region_image(
+  project_dir: "D:/path/to/project",
+  center_x_mm: 149.725,
+  center_y_mm: 97.775,
+  width_mm: 8.0,
+  height_mm: 8.0,
+  layers: "F.Cu,Edge.Cuts",
+  highlight_net: "/03_mcu/EMMC_CMD",
+  include_silkscreen: false,
+  marker_label: "clearance"
+)
+```
 
 **Example — footprint review for a QFN MCU:**
 

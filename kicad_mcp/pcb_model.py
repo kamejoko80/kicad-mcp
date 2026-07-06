@@ -586,14 +586,17 @@ def _parse_zone(zone_node: list[Any], net_names: dict[int, str]) -> dict[str, An
   thermal_bridge = coerce_float(atom_value(find_child(zone_node, "thermal_bridge_width")), 0.0)
   hatch_node = find_child(zone_node, "hatch")
   hatch = atom_values(hatch_node) if hatch_node else []
-  outline_points = _parse_xy_points(find_child(zone_node, "polygon") or [])
+  polygon_node = find_child(zone_node, "polygon") or []
+  outline_points = _parse_xy_points(find_child(polygon_node, "pts") or polygon_node)
   filled_islands = find_children(zone_node, "filled_polygon")
   island_outlines: list[list[dict[str, float]]] = []
   for island_root in filled_islands:
     for island in find_children(island_root, "island"):
       outline = find_child(island, "outline")
       if outline:
-        island_outlines.append(_parse_xy_points(outline))
+        island_outlines.append(_parse_xy_points(find_child(outline, "pts") or outline))
+  if not outline_points and island_outlines:
+    outline_points = island_outlines[0]
   return {
     "net": net_name,
     "net_id": net_id,
@@ -607,6 +610,7 @@ def _parse_zone(zone_node: list[Any], net_names: dict[int, str]) -> dict[str, An
     "thermal_bridge_width_mm": round(thermal_bridge, 4),
     "hatch": hatch,
     "outline_points": outline_points,
+    "filled_island_outlines": island_outlines,
     "filled_island_count": len(island_outlines),
     "bounding_box_mm": _bounding_box(outline_points),
   }
