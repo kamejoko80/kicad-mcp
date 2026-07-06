@@ -1,11 +1,11 @@
 ---
-name: kicad
+name: kicad_review
 description: Review KiCad schematic and PCB layout via the kicad-mcp MCP server. Use when reviewing hardware design, running ERC/DRC, checking footprints, netlists, power rails, or when the user mentions KiCad, schematic, PCB, or layout review.
 ---
 
-# kicad
+# kicad_review
 
-Schematic design workflow:
+Schematic design workflows:
 
 - Access MCP to querry the project information.
 - Scan the project info, project structure.
