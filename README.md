@@ -271,7 +271,8 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 | Section | Contents |
 |---------|----------|
 | Header | Source BOM path, **PCBA Quantity** input cell (`B3`, default `1`) |
-| Placed — Available on Mouser | BOM qty per board, **Order Qty** (`BOM × PCBA`), tiered **Unit Price** from Mouser price breaks, line total, Mouser P/N, availability |
+| Placed — Available on Mouser (In Stock) | BOM qty per board, **Order Qty** (`BOM × PCBA`), tiered **Unit Price**, line total, Mouser P/N, availability |
+| Placed — Available on Mouser (Out of Stock) | Same columns; parts found on Mouser but currently out of stock |
 | Total Mouser (instock) | Sum of line totals where Availability shows in-stock |
 | Total Mouser (outstock) | Sum of line totals where Availability shows out-of-stock |
 | Placed — Not on Mouser | Same columns; unit price defaults to `0` (editable for manual quotes) |

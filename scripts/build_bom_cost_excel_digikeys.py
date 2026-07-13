@@ -486,65 +486,42 @@ def write_table_title(ws, row: int, title: str) -> None:
     ws.cell(row=row, column=1, value=title).font = Font(bold=True, size=12)
 
 
-def build_workbook(
-    bom_rows: list[BomRow],
-    lookup: dict[str, dict[str, object]],
-    output_path: Path,
-    source_name: str,
-) -> None:
-    placed = [row for row in bom_rows if not row.is_dnp]
-    dnp_rows = [row for row in bom_rows if row.is_dnp]
+DIGIKEY_PLACED_HEADERS = [
+    "Line",
+    "References",
+    "Value",
+    "Manufacturer",
+    "MPN",
+    "BOM Qty / Board",
+    "Order Qty (BOM × PCBA)",
+    "DigiKey Unit Price (USD)",
+    "Line Total (USD)",
+    "DigiKey P/N",
+    "Availability",
+]
 
-    available: list[tuple[BomRow, dict[str, object]]] = []
-    unavailable: list[BomRow] = []
-    for row in placed:
-        info = lookup.get(row.mpn, empty_lookup_entry())
-        if info.get("found"):
-            available.append((row, info))
-        else:
-            unavailable.append(row)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "BOM Cost"
+def write_digikey_placed_table(
+    ws,
+    *,
+    current_row: int,
+    title: str,
+    items: list[tuple[BomRow, dict[str, object]]],
+    pcba_cell: str,
+    total_label: str,
+) -> tuple[int, int | None]:
+    """Write one DigiKey placed-components table; return (next_row, total_row)."""
+    if not items:
+        return current_row, None
 
-    ws["A1"] = "BOM Cost Estimate (DigiKey)"
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = "Source BOM"
-    ws["B2"] = source_name
-    ws["A3"] = "PCBA Quantity"
-    ws["B3"] = 1
-    ws["B3"].number_format = "0"
-    ws["A3"].font = Font(bold=True)
-    ws["B3"].fill = PatternFill("solid", fgColor="FFF2CC")
-
-    pcba_cell = "B3"
-    current_row = 5
-
-    headers = [
-        "Line",
-        "References",
-        "Value",
-        "Manufacturer",
-        "MPN",
-        "BOM Qty / Board",
-        "Order Qty (BOM × PCBA)",
-        "DigiKey Unit Price (USD)",
-        "Line Total (USD)",
-        "DigiKey P/N",
-        "Availability",
-    ]
-
-    write_table_title(ws, current_row, "Placed Components — Available on DigiKey")
+    write_table_title(ws, current_row, title)
     current_row += 1
-    header_row = current_row
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=header_row, column=col, value=title)
-        style_header(cell)
+    for col, header in enumerate(DIGIKEY_PLACED_HEADERS, start=1):
+        style_header(ws.cell(row=current_row, column=col, value=header))
     current_row += 1
     first_data_row = current_row
 
-    for row, info in available:
+    for row, info in items:
         breaks = usable_price_breaks(list(info.get("price_breaks") or []))
         ws.cell(row=current_row, column=1, value=row.line)
         ws.cell(row=current_row, column=2, value=row.references)
@@ -568,34 +545,74 @@ def build_workbook(
         current_row += 1
 
     last_data_row = current_row - 1
-    digikey_instock_total_row: int | None = None
-    digikey_outstock_total_row: int | None = None
-    if available:
-        availability_range = f"K{first_data_row}:K{last_data_row}"
-        line_total_range = f"I{first_data_row}:I{last_data_row}"
+    ws.cell(row=current_row, column=5, value=total_label).font = Font(bold=True)
+    total_cell = ws.cell(
+        row=current_row,
+        column=9,
+        value=f"=SUM(I{first_data_row}:I{last_data_row})",
+    )
+    total_cell.font = Font(bold=True)
+    total_cell.number_format = "$0.00"
+    total_row = current_row
+    return current_row + 2, total_row
 
-        ws.cell(row=current_row, column=5, value="Total DigiKey (instock)").font = Font(bold=True)
-        digikey_instock_total_cell = ws.cell(
-            row=current_row,
-            column=9,
-            value=f'=SUMIF({availability_range},"*In Stock*",{line_total_range})',
-        )
-        digikey_instock_total_cell.font = Font(bold=True)
-        digikey_instock_total_cell.number_format = "$0.00"
-        digikey_instock_total_row = current_row
-        current_row += 1
 
-        ws.cell(row=current_row, column=5, value="Total DigiKey (outstock)").font = Font(bold=True)
-        digikey_outstock_total_cell = ws.cell(
-            row=current_row,
-            column=9,
-            value=f'=SUMIF({availability_range},"*Out of Stock*",{line_total_range})',
-        )
-        digikey_outstock_total_cell.font = Font(bold=True)
-        digikey_outstock_total_cell.number_format = "$0.00"
-        digikey_outstock_total_row = current_row
-        current_row += 2
-    else:
+def build_workbook(
+    bom_rows: list[BomRow],
+    lookup: dict[str, dict[str, object]],
+    output_path: Path,
+    source_name: str,
+) -> None:
+    placed = [row for row in bom_rows if not row.is_dnp]
+    dnp_rows = [row for row in bom_rows if row.is_dnp]
+
+    instock: list[tuple[BomRow, dict[str, object]]] = []
+    outstock: list[tuple[BomRow, dict[str, object]]] = []
+    unavailable: list[BomRow] = []
+    for row in placed:
+        info = lookup.get(row.mpn, empty_lookup_entry())
+        if info.get("found"):
+            if is_digikey_in_stock(info):
+                instock.append((row, info))
+            else:
+                outstock.append((row, info))
+        else:
+            unavailable.append(row)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "BOM Cost"
+
+    ws["A1"] = "BOM Cost Estimate (DigiKey)"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A2"] = "Source BOM"
+    ws["B2"] = source_name
+    ws["A3"] = "PCBA Quantity"
+    ws["B3"] = 1
+    ws["B3"].number_format = "0"
+    ws["A3"].font = Font(bold=True)
+    ws["B3"].fill = PatternFill("solid", fgColor="FFF2CC")
+
+    pcba_cell = "B3"
+    current_row = 5
+
+    current_row, digikey_instock_total_row = write_digikey_placed_table(
+        ws,
+        current_row=current_row,
+        title="Placed Components — Available on DigiKey (In Stock)",
+        items=instock,
+        pcba_cell=pcba_cell,
+        total_label="Total DigiKey (instock)",
+    )
+    current_row, digikey_outstock_total_row = write_digikey_placed_table(
+        ws,
+        current_row=current_row,
+        title="Placed Components — Available on DigiKey (Out of Stock)",
+        items=outstock,
+        pcba_cell=pcba_cell,
+        total_label="Total DigiKey (outstock)",
+    )
+    if not instock and not outstock:
         current_row += 1
 
     write_table_title(ws, current_row, "Placed Components — Not Available on DigiKey (Unit Price = 0)")

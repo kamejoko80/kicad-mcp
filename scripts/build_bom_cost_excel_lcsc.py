@@ -193,6 +193,13 @@ def is_lcsc_in_stock(info: dict[str, object]) -> bool:
     return "in stock" in availability
 
 
+def format_lcsc_availability_label(info: dict[str, object]) -> str:
+    availability = str(info.get("availability", "")).strip()
+    if availability:
+        return availability
+    return "In Stock" if is_lcsc_in_stock(info) else "Out of Stock"
+
+
 def pick_exact_dict(records: list[dict], mpn: str) -> dict | None:
     target = mpn.casefold()
     for item in records:
@@ -467,6 +474,77 @@ def write_table_title(ws, row: int, title: str) -> None:
     ws.cell(row=row, column=1, value=title).font = Font(bold=True, size=12)
 
 
+LCSC_PLACED_HEADERS = [
+    "Line",
+    "References",
+    "Value",
+    "Manufacturer",
+    "MPN",
+    "BOM Qty / Board",
+    "Order Qty (BOM × PCBA)",
+    "LCSC Unit Price (USD)",
+    "Line Total (USD)",
+    "LCSC P/N",
+    "Availability",
+]
+
+
+def write_lcsc_placed_table(
+    ws,
+    *,
+    current_row: int,
+    title: str,
+    items: list[tuple[BomRow, dict[str, object]]],
+    pcba_cell: str,
+    total_label: str,
+) -> tuple[int, int | None]:
+    """Write one LCSC placed-components table; return (next_row, total_row)."""
+    if not items:
+        return current_row, None
+
+    write_table_title(ws, current_row, title)
+    current_row += 1
+    for col, header in enumerate(LCSC_PLACED_HEADERS, start=1):
+        style_header(ws.cell(row=current_row, column=col, value=header))
+    current_row += 1
+    first_data_row = current_row
+
+    for row, info in items:
+        breaks = usable_price_breaks(list(info.get("price_breaks") or []))
+        ws.cell(row=current_row, column=1, value=row.line)
+        ws.cell(row=current_row, column=2, value=row.references)
+        ws.cell(row=current_row, column=3, value=row.value)
+        ws.cell(row=current_row, column=4, value=row.manufacturer)
+        ws.cell(row=current_row, column=5, value=row.mpn)
+        ws.cell(row=current_row, column=6, value=row.quantity)
+        order_qty_cell = ws.cell(row=current_row, column=7, value=f"=F{current_row}*{pcba_cell}")
+        order_qty_cell.number_format = "0"
+        order_qty_ref = f"G{current_row}"
+        price_cell = ws.cell(
+            row=current_row,
+            column=8,
+            value=excel_tiered_unit_price_formula(order_qty_ref, breaks),
+        )
+        price_cell.number_format = "$0.0000"
+        total_cell = ws.cell(row=current_row, column=9, value=f"={order_qty_ref}*H{current_row}")
+        total_cell.number_format = "$0.0000"
+        ws.cell(row=current_row, column=10, value=str(info.get("lcsc_pn", "")))
+        ws.cell(row=current_row, column=11, value=format_lcsc_availability_label(info))
+        current_row += 1
+
+    last_data_row = current_row - 1
+    ws.cell(row=current_row, column=5, value=total_label).font = Font(bold=True)
+    total_cell = ws.cell(
+        row=current_row,
+        column=9,
+        value=f"=SUM(I{first_data_row}:I{last_data_row})",
+    )
+    total_cell.font = Font(bold=True)
+    total_cell.number_format = "$0.00"
+    total_row = current_row
+    return current_row + 2, total_row
+
+
 def build_workbook(
     bom_rows: list[BomRow],
     lookup: dict[str, dict[str, object]],
@@ -476,12 +554,16 @@ def build_workbook(
     placed = [row for row in bom_rows if not row.is_dnp]
     dnp_rows = [row for row in bom_rows if row.is_dnp]
 
-    available: list[tuple[BomRow, dict[str, object]]] = []
+    instock: list[tuple[BomRow, dict[str, object]]] = []
+    outstock: list[tuple[BomRow, dict[str, object]]] = []
     unavailable: list[BomRow] = []
     for row in placed:
         info = lookup.get(row.mpn, empty_lookup_entry())
         if info.get("found"):
-            available.append((row, info))
+            if is_lcsc_in_stock(info):
+                instock.append((row, info))
+            else:
+                outstock.append((row, info))
         else:
             unavailable.append(row)
 
@@ -502,84 +584,23 @@ def build_workbook(
     pcba_cell = "B3"
     current_row = 5
 
-    headers = [
-        "Line",
-        "References",
-        "Value",
-        "Manufacturer",
-        "MPN",
-        "BOM Qty / Board",
-        "Order Qty (BOM × PCBA)",
-        "LCSC Unit Price (USD)",
-        "Line Total (USD)",
-        "LCSC P/N",
-        "Availability",
-    ]
-
-    write_table_title(ws, current_row, "Placed Components — Available on LCSC")
-    current_row += 1
-    header_row = current_row
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=header_row, column=col, value=title)
-        style_header(cell)
-    current_row += 1
-    first_data_row = current_row
-
-    for row, info in available:
-        breaks = usable_price_breaks(list(info.get("price_breaks") or []))
-        ws.cell(row=current_row, column=1, value=row.line)
-        ws.cell(row=current_row, column=2, value=row.references)
-        ws.cell(row=current_row, column=3, value=row.value)
-        ws.cell(row=current_row, column=4, value=row.manufacturer)
-        ws.cell(row=current_row, column=5, value=row.mpn)
-        ws.cell(row=current_row, column=6, value=row.quantity)
-        order_qty_cell = ws.cell(row=current_row, column=7, value=f"=F{current_row}*{pcba_cell}")
-        order_qty_cell.number_format = "0"
-        order_qty_ref = f"G{current_row}"
-        price_cell = ws.cell(
-            row=current_row,
-            column=8,
-            value=excel_tiered_unit_price_formula(order_qty_ref, breaks),
-        )
-        price_cell.number_format = "$0.0000"
-        total_cell = ws.cell(row=current_row, column=9, value=f"={order_qty_ref}*H{current_row}")
-        total_cell.number_format = "$0.0000"
-        ws.cell(row=current_row, column=10, value=str(info.get("lcsc_pn", "")))
-        availability = str(info.get("availability", "")).strip()
-        if not availability:
-            availability = "In Stock" if is_lcsc_in_stock(info) else "Out of Stock"
-        ws.cell(row=current_row, column=11, value=availability)
-        current_row += 1
-
-    last_data_row = current_row - 1
-    lcsc_instock_total_row: int | None = None
-    lcsc_outstock_total_row: int | None = None
-    if available:
-        availability_range = f"K{first_data_row}:K{last_data_row}"
-        line_total_range = f"I{first_data_row}:I{last_data_row}"
-
-        ws.cell(row=current_row, column=5, value="Total LCSC (instock)").font = Font(bold=True)
-        lcsc_instock_total_cell = ws.cell(
-            row=current_row,
-            column=9,
-            value=f'=SUMIF({availability_range},"*In Stock*",{line_total_range})',
-        )
-        lcsc_instock_total_cell.font = Font(bold=True)
-        lcsc_instock_total_cell.number_format = "$0.00"
-        lcsc_instock_total_row = current_row
-        current_row += 1
-
-        ws.cell(row=current_row, column=5, value="Total LCSC (outstock)").font = Font(bold=True)
-        lcsc_outstock_total_cell = ws.cell(
-            row=current_row,
-            column=9,
-            value=f'=SUMIF({availability_range},"*Out of Stock*",{line_total_range})',
-        )
-        lcsc_outstock_total_cell.font = Font(bold=True)
-        lcsc_outstock_total_cell.number_format = "$0.00"
-        lcsc_outstock_total_row = current_row
-        current_row += 2
-    else:
+    current_row, lcsc_instock_total_row = write_lcsc_placed_table(
+        ws,
+        current_row=current_row,
+        title="Placed Components — Available on LCSC (In Stock)",
+        items=instock,
+        pcba_cell=pcba_cell,
+        total_label="Total LCSC (instock)",
+    )
+    current_row, lcsc_outstock_total_row = write_lcsc_placed_table(
+        ws,
+        current_row=current_row,
+        title="Placed Components — Available on LCSC (Out of Stock)",
+        items=outstock,
+        pcba_cell=pcba_cell,
+        total_label="Total LCSC (outstock)",
+    )
+    if not instock and not outstock:
         current_row += 1
 
     write_table_title(ws, current_row, "Placed Components — Not Available on LCSC (Unit Price = 0)")

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import scripts.build_bom_cost_excel_lcsc as bom_cost
@@ -73,6 +75,54 @@ class BomLCSCLookupTests(unittest.TestCase):
         )
         breaks = bom_cost.normalized_price_breaks(record)
         self.assertEqual(breaks, [(100, 1.32)])
+
+    def test_format_lcsc_availability_label_falls_back_to_stock(self) -> None:
+        self.assertEqual(
+            bom_cost.format_lcsc_availability_label({"stock_quantity": "10", "availability": ""}),
+            "In Stock",
+        )
+        self.assertEqual(
+            bom_cost.format_lcsc_availability_label({"stock_quantity": "0", "availability": ""}),
+            "Out of Stock",
+        )
+
+    def test_build_workbook_splits_instock_and_outstock_tables(self) -> None:
+        bom_rows = [
+            bom_cost.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "IN-STOCK-MPN", 1, ""),
+            bom_cost.BomRow(2, "C2", "100nF", "C_0402", "YAGEO", "OUT-STOCK-MPN", 1, ""),
+            bom_cost.BomRow(3, "C3", "100nF", "C_0402", "YAGEO", "MISSING-MPN", 1, ""),
+        ]
+        lookup = {
+            "IN-STOCK-MPN": {
+                "found": True,
+                "price_breaks": [(1, 0.10)],
+                "lcsc_pn": "C111",
+                "stock_quantity": "100",
+                "availability": "100 In Stock",
+            },
+            "OUT-STOCK-MPN": {
+                "found": True,
+                "price_breaks": [(1, 0.05)],
+                "lcsc_pn": "C222",
+                "stock_quantity": "0",
+                "availability": "Out of Stock",
+            },
+            "MISSING-MPN": bom_cost.empty_lookup_entry(),
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "bom_cost.xlsx"
+            bom_cost.build_workbook(bom_rows, lookup, output_path, "test.csv")
+            from openpyxl import load_workbook
+
+            ws = load_workbook(output_path)["BOM Cost"]
+            titles = [
+                str(ws.cell(row, 1).value)
+                for row in range(1, ws.max_row + 1)
+                if ws.cell(row, 1).value
+            ]
+            self.assertIn("Placed Components — Available on LCSC (In Stock)", titles)
+            self.assertIn("Placed Components — Available on LCSC (Out of Stock)", titles)
+            self.assertNotIn("Placed Components — Available on LCSC", titles)
 
 
 if __name__ == "__main__":
