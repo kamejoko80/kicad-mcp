@@ -66,6 +66,7 @@ kicad-mcp/
     build_bom_cost_excel_mouser.py # BOM cost Excel workbook from KiCad BOM CSV (Mouser via MCP)
     build_bom_cost_excel_lcsc.py   # BOM cost Excel workbook from KiCad BOM CSV (LCSC via MCP)
     build_bom_cost_excel_digikeys.py # BOM cost Excel workbook from KiCad BOM CSV (DigiKey via MCP)
+    build_bom_cost_excel_all.py    # Combined BOM cost Excel with priority-based DigiKey/Mouser/LCSC cascade
   img/
     kicad-mcp-workflow.png
   pyproject.toml
@@ -341,6 +342,37 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 | `--mcp-url` | `http://127.0.0.1:8500/mcp` | MCP server URL for DigiKey lookups |
 
 Subtotals split into **Total DigiKey (instock)** and **Total DigiKey (outstock)**; tiered unit prices follow DigiKey quantity breaks.
+
+### BOM cost Excel — combined cascade (`scripts/build_bom_cost_excel_all.py`)
+
+Builds a **single workbook** that searches **DigiKey, Mouser, and LCSC** in priority order. Each placed part is looked up on the priority-1 distributor first; parts that are **not found** or **out of stock** cascade to the next distributor. Each part appears in **only one** in-stock table (first match wins). Leftovers go into **Not Available on above distributors (Unit Price = 0)**.
+
+**Default priorities:** DigiKey = 1, Mouser = 2, LCSC = 3. Override with `--digikeys-prio`, `--mouser-prio`, and `--lcsc-prio` (must be a permutation of 1, 2, 3).
+
+**Prerequisites:** MCP server running with the distributors you need configured (DigiKey OAuth, Mouser API key; LCSC needs no key).
+
+```powershell
+cd D:\Workspace\FW\kicad-mcp
+uv run --with openpyxl python scripts/build_bom_cost_excel_all.py `
+  "D:\path\to\project\fabrication\bom\my_design.csv" `
+  "D:\path\to\project\fabrication\bom\my_design_bom_cost_all.xlsx"
+```
+
+If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_bom_cost_all.xlsx`.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--mcp-url` | `http://127.0.0.1:8500/mcp` | MCP server URL for all distributor lookups |
+| `--digikeys-prio` | `1` | DigiKey search order (lower = first) |
+| `--mouser-prio` | `2` | Mouser search order |
+| `--lcsc-prio` | `3` | LCSC search order |
+
+Example — prefer LCSC first, then Mouser, then DigiKey:
+
+```powershell
+uv run --with openpyxl python scripts/build_bom_cost_excel_all.py bom.csv `
+  --lcsc-prio 1 --mouser-prio 2 --digikeys-prio 3
+```
 
 **DigiKey setup**
 
