@@ -276,8 +276,8 @@ If `output.xlsx` is omitted, the file is written beside the CSV as `<bom_stem>_b
 | Placed — Available on Mouser (Out of Stock) | Same columns; parts found on Mouser but currently out of stock |
 | Total Mouser (instock) | Sum of line totals where Availability shows in-stock |
 | Total Mouser (outstock) | Sum of line totals where Availability shows out-of-stock |
-| Placed — Not on Mouser | Same columns; unit price defaults to `0` (editable for manual quotes) |
-| Total (Not on Mouser × PCBA Qty) | Sum of non-Mouser line totals × `B3` |
+| Placed — Not on Mouser | BOM qty per board, **Order Qty** (`BOM × PCBA`), unit price defaults to `0` (editable), line total |
+| Total (Not on Mouser) | Sum of non-Mouser line totals (order qty already includes PCBA) |
 | Combined BOM Cost Summary | Mouser instock total, Mouser outstock total, non-Mouser total (× PCBA), **Combined Total (All PCBA)**, **Grand Total** |
 | Do Not Place (DNP) | Rows with `Note = "Do not place"` or `(DNP)` in value — excluded from pricing |
 

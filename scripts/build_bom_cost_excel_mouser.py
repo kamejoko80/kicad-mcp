@@ -622,9 +622,10 @@ def build_workbook(
         "Value",
         "Manufacturer",
         "MPN",
-        "BOM Qty",
+        "BOM Qty / Board",
+        "Order Qty (BOM × PCBA)",
         "Unit Price (USD)",
-        "Line Total / Board (USD)",
+        "Line Total (USD)",
     ]
     for col, title in enumerate(unavailable_headers, start=1):
         cell = ws.cell(row=current_row, column=col, value=title)
@@ -638,20 +639,22 @@ def build_workbook(
         ws.cell(row=current_row, column=4, value=row.manufacturer)
         ws.cell(row=current_row, column=5, value=row.mpn)
         ws.cell(row=current_row, column=6, value=row.quantity)
-        zero_cell = ws.cell(row=current_row, column=7, value=0)
+        order_qty_cell = ws.cell(row=current_row, column=7, value=f"=F{current_row}*{pcba_cell}")
+        order_qty_cell.number_format = "0"
+        zero_cell = ws.cell(row=current_row, column=8, value=0)
         zero_cell.number_format = "$0.0000"
-        line_total = ws.cell(row=current_row, column=8, value=f"=F{current_row}*G{current_row}")
+        line_total = ws.cell(row=current_row, column=9, value=f"=G{current_row}*H{current_row}")
         line_total.number_format = "$0.0000"
         current_row += 1
 
     unavailable_last_data_row = current_row - 1
     non_mouser_total_row: int | None = None
     if unavailable:
-        ws.cell(row=current_row, column=5, value="Total (Not on Mouser × PCBA Qty)").font = Font(bold=True)
+        ws.cell(row=current_row, column=5, value="Total (Not on Mouser)").font = Font(bold=True)
         non_mouser_total_cell = ws.cell(
             row=current_row,
-            column=8,
-            value=f"=SUM(H{unavailable_first_data_row}:H{unavailable_last_data_row})*{pcba_cell}",
+            column=9,
+            value=f"=SUM(I{unavailable_first_data_row}:I{unavailable_last_data_row})",
         )
         non_mouser_total_cell.font = Font(bold=True)
         non_mouser_total_cell.number_format = "$0.00"
@@ -664,7 +667,7 @@ def build_workbook(
     current_row += 1
     mouser_instock_total_ref = f"I{mouser_instock_total_row}" if mouser_instock_total_row else "0"
     mouser_outstock_total_ref = f"I{mouser_outstock_total_row}" if mouser_outstock_total_row else "0"
-    non_mouser_total_ref = f"H{non_mouser_total_row}" if non_mouser_total_row else "0"
+    non_mouser_total_ref = f"I{non_mouser_total_row}" if non_mouser_total_row else "0"
 
     ws.cell(row=current_row, column=5, value="Total — Mouser (instock)").font = Font(bold=True)
     ws.cell(row=current_row, column=9, value=f"={mouser_instock_total_ref}").number_format = "$0.00"
@@ -676,7 +679,7 @@ def build_workbook(
     mouser_outstock_summary_row = current_row
     current_row += 1
 
-    ws.cell(row=current_row, column=5, value="Total — Not on Mouser (× PCBA Qty)").font = Font(bold=True)
+    ws.cell(row=current_row, column=5, value="Total — Not on Mouser").font = Font(bold=True)
     ws.cell(row=current_row, column=9, value=f"={non_mouser_total_ref}").number_format = "$0.00"
     non_mouser_summary_row = current_row
     current_row += 1

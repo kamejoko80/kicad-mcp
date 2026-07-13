@@ -251,6 +251,35 @@ class BuildWorkbookTests(unittest.TestCase):
             self.assertNotIn("Placed Components — Available on DigiKey (Out of Stock)", titles)
             self.assertNotIn("Placed Components — Available on Mouser (Out of Stock)", titles)
 
+    def test_unavailable_table_includes_bom_and_order_qty_columns(self) -> None:
+        rows = [
+            bom_all.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "MISSING", 2, ""),
+        ]
+        lookups = {
+            "digikey": {"MISSING": bom_all.empty_digikey_lookup()},
+            "mouser": {"MISSING": bom_all.empty_mouser_lookup()},
+            "lcsc": {"MISSING": bom_all.empty_lcsc_lookup()},
+        }
+        cascade = bom_all.assign_parts_cascade(rows, ["digikey", "mouser", "lcsc"], lookups)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "bom_cost_all.xlsx"
+            bom_all.build_workbook(rows, cascade, output_path, "test.csv")
+            from openpyxl import load_workbook
+
+            ws = load_workbook(output_path)["BOM Cost"]
+            header_row = next(
+                row
+                for row in range(1, ws.max_row + 1)
+                if ws.cell(row, 1).value
+                == "Placed Components — Not Available on above distributors (Unit Price = 0)"
+            ) + 1
+            self.assertEqual(ws.cell(header_row, 6).value, "BOM Qty / Board")
+            self.assertEqual(ws.cell(header_row, 7).value, "Order Qty (BOM × PCBA)")
+            data_row = header_row + 1
+            self.assertEqual(ws.cell(data_row, 6).value, 2)
+            self.assertEqual(ws.cell(data_row, 7).value, f"=F{data_row}*B3")
+
     def test_workbook_respects_custom_priority_order(self) -> None:
         rows = [
             bom_all.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "PART-Z", 1, ""),

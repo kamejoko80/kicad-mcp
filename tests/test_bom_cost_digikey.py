@@ -83,6 +83,29 @@ class BomDigiKeyLookupTests(unittest.TestCase):
             self.assertIn("Placed Components — Available on DigiKey (Out of Stock)", titles)
             self.assertNotIn("Placed Components — Available on DigiKey", titles)
 
+    def test_unavailable_table_includes_bom_and_order_qty_columns(self) -> None:
+        bom_rows = [
+            bom_cost.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "MISSING-MPN", 2, ""),
+        ]
+        lookup = {"MISSING-MPN": bom_cost.empty_lookup_entry()}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "bom_cost.xlsx"
+            bom_cost.build_workbook(bom_rows, lookup, output_path, "test.csv")
+            from openpyxl import load_workbook
+
+            ws = load_workbook(output_path)["BOM Cost"]
+            header_row = next(
+                row
+                for row in range(1, ws.max_row + 1)
+                if ws.cell(row, 1).value
+                == "Placed Components — Not Available on DigiKey (Unit Price = 0)"
+            ) + 1
+            self.assertEqual(ws.cell(header_row, 6).value, "BOM Qty / Board")
+            self.assertEqual(ws.cell(header_row, 7).value, "Order Qty (BOM × PCBA)")
+            data_row = header_row + 1
+            self.assertEqual(ws.cell(data_row, 6).value, 2)
+            self.assertEqual(ws.cell(data_row, 7).value, f"=F{data_row}*B3")
+
 
 if __name__ == "__main__":
     unittest.main()

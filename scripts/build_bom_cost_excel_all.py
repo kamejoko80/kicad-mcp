@@ -234,9 +234,10 @@ def write_unavailable_table(
         "Value",
         "Manufacturer",
         "MPN",
-        "BOM Qty",
+        "BOM Qty / Board",
+        "Order Qty (BOM × PCBA)",
         "Unit Price (USD)",
-        "Line Total / Board (USD)",
+        "Line Total (USD)",
     ]
     for col, title in enumerate(unavailable_headers, start=1):
         style_header(ws.cell(row=current_row, column=col, value=title))
@@ -250,20 +251,22 @@ def write_unavailable_table(
         ws.cell(row=current_row, column=4, value=row.manufacturer)
         ws.cell(row=current_row, column=5, value=row.mpn)
         ws.cell(row=current_row, column=6, value=row.quantity)
-        zero_cell = ws.cell(row=current_row, column=7, value=0)
+        order_qty_cell = ws.cell(row=current_row, column=7, value=f"=F{current_row}*{pcba_cell}")
+        order_qty_cell.number_format = "0"
+        zero_cell = ws.cell(row=current_row, column=8, value=0)
         zero_cell.number_format = "$0.0000"
-        line_total = ws.cell(row=current_row, column=8, value=f"=F{current_row}*G{current_row}")
+        line_total = ws.cell(row=current_row, column=9, value=f"=G{current_row}*H{current_row}")
         line_total.number_format = "$0.0000"
         current_row += 1
 
     unavailable_last_data_row = current_row - 1
     total_row: int | None = None
     if rows:
-        ws.cell(row=current_row, column=5, value="Total (Not available × PCBA Qty)").font = Font(bold=True)
+        ws.cell(row=current_row, column=5, value="Total (Not available)").font = Font(bold=True)
         total_cell = ws.cell(
             row=current_row,
-            column=8,
-            value=f"=SUM(H{unavailable_first_data_row}:H{unavailable_last_data_row})*{pcba_cell}",
+            column=9,
+            value=f"=SUM(I{unavailable_first_data_row}:I{unavailable_last_data_row})",
         )
         total_cell.font = Font(bold=True)
         total_cell.number_format = "$0.00"
@@ -338,8 +341,8 @@ def build_workbook(
         summary_rows.append(current_row)
         current_row += 1
 
-    unavailable_total_ref = f"H{unavailable_total_row}" if unavailable_total_row else "0"
-    ws.cell(row=current_row, column=5, value="Total — Not available (× PCBA Qty)").font = Font(bold=True)
+    unavailable_total_ref = f"I{unavailable_total_row}" if unavailable_total_row else "0"
+    ws.cell(row=current_row, column=5, value="Total — Not available").font = Font(bold=True)
     ws.cell(row=current_row, column=9, value=f"={unavailable_total_ref}").number_format = "$0.00"
     unavailable_summary_row = current_row
     current_row += 1
