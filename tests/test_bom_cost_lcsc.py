@@ -124,6 +124,17 @@ class BomLCSCLookupTests(unittest.TestCase):
             self.assertIn("Placed Components — Available on LCSC (Out of Stock)", titles)
             self.assertNotIn("Placed Components — Available on LCSC", titles)
 
+    def test_pick_exact_dict_does_not_fallback_to_first_fuzzy_match(self) -> None:
+        records = [
+            {"manufacturer_part_number": "RT4730WSC", "distributor_part_number": "C425170"},
+            {"manufacturer_part_number": "WSC452722R00JEA", "distributor_part_number": "C28586512"},
+        ]
+        self.assertIsNone(bom_cost.pick_exact_dict(records, "AAT1556-WSC-T"))
+        self.assertEqual(
+            bom_cost.pick_exact_dict(records, "RT4730WSC"),
+            records[0],
+        )
+
     def test_unavailable_table_includes_bom_and_order_qty_columns(self) -> None:
         bom_rows = [
             bom_cost.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "MISSING-MPN", 2, ""),

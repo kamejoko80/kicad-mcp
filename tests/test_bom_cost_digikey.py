@@ -83,6 +83,12 @@ class BomDigiKeyLookupTests(unittest.TestCase):
             self.assertIn("Placed Components — Available on DigiKey (Out of Stock)", titles)
             self.assertNotIn("Placed Components — Available on DigiKey", titles)
 
+    def test_pick_exact_dict_does_not_fallback_to_first_fuzzy_match(self) -> None:
+        records = [
+            {"manufacturer_part_number": "OP177GSZ-REEL7", "distributor_part_number": "C141924"},
+        ]
+        self.assertIsNone(bom_cost.pick_exact_dict(records, "CL-77G"))
+
     def test_unavailable_table_includes_bom_and_order_qty_columns(self) -> None:
         bom_rows = [
             bom_cost.BomRow(1, "C1", "100nF", "C_0402", "YAGEO", "MISSING-MPN", 2, ""),

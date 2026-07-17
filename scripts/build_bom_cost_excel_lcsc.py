@@ -205,7 +205,7 @@ def pick_exact_dict(records: list[dict], mpn: str) -> dict | None:
     for item in records:
         if str(item.get("manufacturer_part_number", "")).casefold() == target:
             return item
-    return records[0] if records else None
+    return None
 
 
 MANUFACTURER_ALIASES: dict[str, list[str]] = {
